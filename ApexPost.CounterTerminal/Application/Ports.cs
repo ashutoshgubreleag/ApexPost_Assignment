@@ -105,7 +105,7 @@ public sealed class TerminalOptions
     /// <summary>Persistent, configurable directory for the Couchbase Lite database.</summary>
     public string DataDirectory { get; set; } = "terminal-data";
 
-    public string ServerBaseUrl { get; set; } = "https://localhost:7243";
+    public string ServerBaseUrl { get; set; } = "https://localhost:7052";
 
     /// <summary>From user-secrets (Terminal:DeviceKey), never committed.</summary>
     public string DeviceKey { get; set; } = string.Empty;

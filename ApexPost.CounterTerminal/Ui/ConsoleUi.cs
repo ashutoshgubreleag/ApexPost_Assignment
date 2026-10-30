@@ -81,6 +81,7 @@ public sealed class ConsoleUi(TerminalService terminal, SyncWorker sync, INetwor
                 case "offline":
                     network.IsDisconnected = true;
                     output.WriteLine("Network OFF. Sales keep working and queue in the outbox.");
+                    Report(await sync.SyncOnceAsync(cancellationToken).ConfigureAwait(false));
                     break;
                 case "online":
                     network.IsDisconnected = false;

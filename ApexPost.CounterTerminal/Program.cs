@@ -95,4 +95,3 @@ catch (OperationCanceledException)
     // Normal shutdown.
 }
 
-public partial class Program;

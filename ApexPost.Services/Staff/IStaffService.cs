@@ -1,4 +1,5 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.Validation;
 using ApexPost.Models.ValueObjects;
 using ApexPost.Services.Common;
@@ -30,19 +31,13 @@ public sealed record SaveStaffCommand
 
 public interface IStaffService
 {
-    Task<IReadOnlyList<StaffEntity>> GetAllAsync(StaffContext actor, CancellationToken cancellationToken);
+    Task<IReadOnlyList<StaffDto>> GetAllAsync(StaffContext actor, CancellationToken cancellationToken);
 
-    Task<StaffEntity> GetByIdAsync(int staffId, CancellationToken cancellationToken);
+    Task<StaffDto> GetByIdAsync(int staffId, CancellationToken cancellationToken);
 
-    Task<StaffEntity> CreateAsync(SaveStaffCommand command, StaffContext actor, CancellationToken cancellationToken);
+    Task<StaffDto> CreateAsync(SaveStaffCommand command, StaffContext actor, CancellationToken cancellationToken);
 
-    Task<StaffEntity> UpdateAsync(SaveStaffCommand command, StaffContext actor, CancellationToken cancellationToken);
+    Task<StaffDto> UpdateAsync(SaveStaffCommand command, StaffContext actor, CancellationToken cancellationToken);
 
     Task DeactivateAsync(int staffId, StaffContext actor, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Re-loads the actor and enforces "inactive staff cannot open or process transactions" and
-    /// "a clerk can only transact at their assigned branch".
-    /// </summary>
-    Task<StaffEntity> EnsureCanTransactAsync(StaffContext actor, BranchCode branch, CancellationToken cancellationToken);
 }

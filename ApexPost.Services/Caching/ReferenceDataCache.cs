@@ -1,60 +1,55 @@
 using Microsoft.Extensions.Caching.Memory;
-using ApexPost.Database.Models;
+using Microsoft.Extensions.DependencyInjection;
 using ApexPost.Models.ValueObjects;
-using ApexPost.Repositories;
+using ApexPost.Services.Abstractions;
 
 namespace ApexPost.Services.Caching;
 
-/// <summary>Frequently read, rarely changed reference data: the product catalogue and zone rate cards.</summary>
+/// <summary>
+/// Products and zones are read on almost every request but change rarely. The cache is a singleton,
+/// so it must not hold a scoped DbContext: each refill opens its own scope and reads through the
+/// query service (AsNoTracking projection to DTOs). Hits complete synchronously (ValueTask).
+/// </summary>
 public interface IReferenceDataCache
 {
-    ValueTask<IReadOnlyDictionary<Sku, ProductEntity>> GetProductsAsync(CancellationToken cancellationToken);
-    ValueTask<IReadOnlyDictionary<string, ShippingZoneEntity>> GetZonesAsync(CancellationToken cancellationToken);
+    ValueTask<IReadOnlyDictionary<Sku, ProductDto>> GetProductsAsync(CancellationToken cancellationToken);
+
+    ValueTask<IReadOnlyDictionary<string, ZoneDto>> GetZonesAsync(CancellationToken cancellationToken);
+
     void InvalidateProducts();
 }
 
-/// <summary>
-/// Caches indexed reference data in <see cref="IMemoryCache"/>.
-///
-/// Why ValueTask: every basket line and every shipping quote needs a product or zone lookup.
-/// On a cache hit (~all calls after the first) the method returns synchronously, and
-/// <see cref="ValueTask{TResult}"/> lets it do so without allocating a Task. Only the rare miss
-/// pays for the async load. Why a cache on top of the repository: the repository hands out
-/// deep copies of every row (safe, but it re-serialises each time); the cache builds an O(1)
-/// dictionary once and shares immutable-by-convention instances. DESIGN.md has the measurements.
-/// </summary>
-public sealed class ReferenceDataCache(
-    IMemoryCache cache,
-    IBaseEntityRepository<ProductEntity> products,
-    IBaseEntityRepository<ShippingZoneEntity> zones) : IReferenceDataCache
+public sealed class ReferenceDataCache(IMemoryCache cache, IServiceScopeFactory scopes) : IReferenceDataCache
 {
     private const string ProductsKey = "ref:products";
     private const string ZonesKey = "ref:zones";
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
-    public ValueTask<IReadOnlyDictionary<Sku, ProductEntity>> GetProductsAsync(CancellationToken cancellationToken) =>
-        cache.TryGetValue(ProductsKey, out IReadOnlyDictionary<Sku, ProductEntity>? hit) && hit is not null
+    public ValueTask<IReadOnlyDictionary<Sku, ProductDto>> GetProductsAsync(CancellationToken cancellationToken) =>
+        cache.TryGetValue(ProductsKey, out IReadOnlyDictionary<Sku, ProductDto>? hit) && hit is not null
             ? ValueTask.FromResult(hit)
-            : new ValueTask<IReadOnlyDictionary<Sku, ProductEntity>>(LoadProductsAsync(cancellationToken));
+            : new ValueTask<IReadOnlyDictionary<Sku, ProductDto>>(LoadProductsAsync(cancellationToken));
 
-    public ValueTask<IReadOnlyDictionary<string, ShippingZoneEntity>> GetZonesAsync(CancellationToken cancellationToken) =>
-        cache.TryGetValue(ZonesKey, out IReadOnlyDictionary<string, ShippingZoneEntity>? hit) && hit is not null
+    public ValueTask<IReadOnlyDictionary<string, ZoneDto>> GetZonesAsync(CancellationToken cancellationToken) =>
+        cache.TryGetValue(ZonesKey, out IReadOnlyDictionary<string, ZoneDto>? hit) && hit is not null
             ? ValueTask.FromResult(hit)
-            : new ValueTask<IReadOnlyDictionary<string, ShippingZoneEntity>>(LoadZonesAsync(cancellationToken));
+            : new ValueTask<IReadOnlyDictionary<string, ZoneDto>>(LoadZonesAsync(cancellationToken));
 
     public void InvalidateProducts() => cache.Remove(ProductsKey);
 
-    private async Task<IReadOnlyDictionary<Sku, ProductEntity>> LoadProductsAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<Sku, ProductDto>> LoadProductsAsync(CancellationToken cancellationToken)
     {
-        var all = await products.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        IReadOnlyDictionary<Sku, ProductEntity> index = all.ToDictionary(p => p.Sku);
+        await using var scope = scopes.CreateAsyncScope();
+        var all = await scope.ServiceProvider.GetRequiredService<ICatalogQueries>().ListProductsAsync(cancellationToken).ConfigureAwait(false);
+        IReadOnlyDictionary<Sku, ProductDto> index = all.ToDictionary(p => p.Sku);
         return cache.Set(ProductsKey, index, Lifetime);
     }
 
-    private async Task<IReadOnlyDictionary<string, ShippingZoneEntity>> LoadZonesAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, ZoneDto>> LoadZonesAsync(CancellationToken cancellationToken)
     {
-        var all = await zones.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        IReadOnlyDictionary<string, ShippingZoneEntity> index = all.ToDictionary(z => z.ZoneCode, StringComparer.OrdinalIgnoreCase);
+        await using var scope = scopes.CreateAsyncScope();
+        var all = await scope.ServiceProvider.GetRequiredService<ICatalogQueries>().ListZonesAsync(cancellationToken).ConfigureAwait(false);
+        IReadOnlyDictionary<string, ZoneDto> index = all.ToDictionary(z => z.ZoneCode, StringComparer.OrdinalIgnoreCase);
         return cache.Set(ZonesKey, index, Lifetime);
     }
 }

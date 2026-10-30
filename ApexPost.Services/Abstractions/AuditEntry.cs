@@ -1,4 +1,4 @@
-namespace ApexPost.Utilities.Audit;
+namespace ApexPost.Services.Abstractions;
 
 /// <summary>
 /// One audit record: who (staff, role, branch) did what (action, key values), when, with what

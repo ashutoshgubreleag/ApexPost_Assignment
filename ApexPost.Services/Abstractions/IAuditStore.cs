@@ -1,4 +1,4 @@
-namespace ApexPost.Utilities.Audit;
+namespace ApexPost.Services.Abstractions;
 
 /// <summary>Append-only audit log. There is deliberately no update or delete.</summary>
 public interface IAuditStore

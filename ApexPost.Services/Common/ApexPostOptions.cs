@@ -20,6 +20,12 @@ public sealed class BusinessRulesOptions
 
     /// <summary>Stock at or below max(item reorder threshold, this value) counts as low.</summary>
     public int LowStockThreshold { get; set; } = 5;
+
+    /// <summary>Attempts (including the first) for a use case that hits an optimistic concurrency conflict.</summary>
+    public int ConcurrencyRetryAttempts { get; set; } = 3;
+
+    /// <summary>Offline price variance (fraction) above which a synced sale is flagged for review (CONFLICTS.md C1).</summary>
+    public decimal OfflinePriceVarianceTolerance { get; set; } = 0.05m;
 }
 
 /// <summary>Simulated courier partner settings (section <c>Courier</c>).</summary>

@@ -1,4 +1,5 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.Validation;
 using ApexPost.Models.ValueObjects;
 
@@ -47,7 +48,7 @@ public sealed record SurchargeLine(string Name, Money Amount);
 public sealed record ShippingPricingContext(
     ShippingType ShippingType,
     ShippingServiceLevel ServiceLevel,
-    ShippingZoneEntity Zone,
+    ZoneDto Zone,
     Weight ActualWeight,
     Dimensions Dimensions,
     decimal FuelSurchargeRate);

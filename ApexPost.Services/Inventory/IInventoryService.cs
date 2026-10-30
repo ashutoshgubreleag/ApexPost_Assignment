@@ -1,6 +1,6 @@
-using ApexPost.Database.Models;
 using ApexPost.Models.Validation;
 using ApexPost.Models.ValueObjects;
+using ApexPost.Services.Abstractions;
 using ApexPost.Services.Common;
 
 namespace ApexPost.Services.Inventory;
@@ -25,19 +25,20 @@ public sealed record StockAdjustmentCommand
 
 public interface IInventoryService
 {
-    Task<IReadOnlyList<BranchStockEntity>> GetStockForBranchAsync(BranchCode branch, CancellationToken cancellationToken);
+    Task<IReadOnlyList<StockDto>> GetStockForBranchAsync(BranchCode branch, CancellationToken cancellationToken);
 
     Task<int> GetAvailableQuantityAsync(BranchCode branch, Sku sku, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Removes stock for a sale, all or nothing. Fails with STOCK_INSUFFICIENT if any line
-    /// would take a branch below zero; nothing is changed in that case.
+    /// Removes stock for a sale, all or nothing, in one commit. Fails with STOCK_INSUFFICIENT if any
+    /// line would take a branch below zero; nothing is changed in that case. Concurrent sales of
+    /// the same rows are detected with rowversion and retried on fresh data.
     /// </summary>
     Task DeductAsync(BranchCode branch, IReadOnlyCollection<StockQuantity> items, CancellationToken cancellationToken);
 
-    /// <summary>Returns stock to the shelf after a void or refund.</summary>
+    /// <summary>Returns stock to the shelf (one commit).</summary>
     Task RestockAsync(BranchCode branch, IReadOnlyCollection<StockQuantity> items, CancellationToken cancellationToken);
 
-    /// <summary>Manual stock adjustment by a branch manager or administrator.</summary>
-    Task<BranchStockEntity> AdjustAsync(StockAdjustmentCommand command, StaffContext actor, CancellationToken cancellationToken);
+    /// <summary>Manual adjustment by a branch manager or administrator, through usp_AdjustStock.</summary>
+    Task<StockDto> AdjustAsync(StockAdjustmentCommand command, StaffContext actor, CancellationToken cancellationToken);
 }

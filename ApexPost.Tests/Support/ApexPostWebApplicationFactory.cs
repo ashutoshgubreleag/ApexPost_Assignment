@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using ApexPost.Services.Abstractions;
+using ApexPost.Tests.Support.Fakes;
 
 namespace ApexPost.Tests.Support;
 
@@ -20,6 +23,7 @@ public sealed partial class ApexPostWebApplicationFactory : WebApplicationFactor
 {
     public const string TestApiKey = "test-partner-key-0123456789";
     public const string TestClientIpHeader = "X-Test-Client-IP";
+    public const string TestDeviceKey = "test-device-key-0123456789";
 
     private readonly Dictionary<string, string?> _overrides;
 
@@ -30,16 +34,18 @@ public sealed partial class ApexPostWebApplicationFactory : WebApplicationFactor
     {
         _overrides = overrides ?? [];
         Environment = environment;
-        DataDirectory = Path.Combine(Path.GetTempPath(), "apexpost-web-tests", Guid.NewGuid().ToString("N"));
     }
 
     /// <summary>A test host with configuration overrides.</summary>
     public static ApexPostWebApplicationFactory With(Dictionary<string, string?> overrides, string environment = "Testing") => new(overrides, environment);
 
-    public string DataDirectory { get; }
     public string Environment { get; }
 
-    public string AuditFile => Path.Combine(DataDirectory, "audit-log.jsonl");
+    /// <summary>The in-memory "database" behind this test server (the pipeline tests need no SQL Server).</summary>
+    public InMemoryStore Store { get; } = new();
+
+    /// <summary>Audit entries written by the audit filter during the test.</summary>
+    public IReadOnlyList<AuditEntry> AuditEntries => Services.GetRequiredService<InMemoryAuditStore>().Entries;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -49,7 +55,11 @@ public sealed partial class ApexPostWebApplicationFactory : WebApplicationFactor
         {
             var settings = new Dictionary<string, string?>
             {
-                ["Storage:DataDirectory"] = DataDirectory,
+                ["ConnectionStrings:ApexPostDb"] = "Server=unused-in-pipeline-tests",
+                ["Sync:Devices:TERM-TEST-01:Key"] = TestDeviceKey,
+                ["Sync:Devices:TERM-TEST-01:BranchCode"] = "BR-001",
+                ["Sync:Devices:TERM-TEST-02:Key"] = TestDeviceKey + "-2",
+                ["Sync:Devices:TERM-TEST-02:BranchCode"] = "BR-002",
                 ["Integration:Partners:swiftcourier"] = TestApiKey,
                 ["IpRestriction:Enabled"] = "true",
                 ["IpRestriction:AllowList:0"] = "127.0.0.1",
@@ -71,6 +81,14 @@ public sealed partial class ApexPostWebApplicationFactory : WebApplicationFactor
         builder.ConfigureServices(services =>
         {
             services.AddSingleton<IStartupFilter, TestClientIpStartupFilter>();
+
+            // Replace the EF Core persistence layer with the in-memory fakes (last registration wins).
+            services.AddInMemoryPersistence(Store);
+            services.Configure<HealthCheckServiceOptions>(options =>
+            {
+                options.Registrations.Clear();
+                options.Registrations.Add(new HealthCheckRegistration("in-memory", _ => new AlwaysHealthy(), null, null));
+            });
             services.AddControllersWithViews().AddApplicationPart(typeof(ThrowController).Assembly);
         });
     }
@@ -112,18 +130,6 @@ public sealed partial class ApexPostWebApplicationFactory : WebApplicationFactor
     public static async Task<HttpResponseMessage> LoginAsync(HttpClient client, string email, string password = "ApexPost123!") =>
         await PostFormAsync(client, "/Account/Login", "/Account/Login", new Dictionary<string, string> { ["Email"] = email, ["Password"] = password });
 
-    protected override void Dispose(bool disposing)
-    {
-        base.Dispose(disposing);
-        try
-        {
-            Directory.Delete(DataDirectory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // best effort
-        }
-    }
 
     [GeneratedRegex("name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"")]
     private static partial Regex TokenPattern();
@@ -148,4 +154,10 @@ public sealed partial class ApexPostWebApplicationFactory : WebApplicationFactor
 public sealed class ThrowController : Microsoft.AspNetCore.Mvc.Controller
 {
     public Microsoft.AspNetCore.Mvc.IActionResult Now() => throw new InvalidOperationException("Sensitive internal detail: connection string=secret");
+}
+
+internal sealed class AlwaysHealthy : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default) =>
+        Task.FromResult(HealthCheckResult.Healthy("In-memory store."));
 }

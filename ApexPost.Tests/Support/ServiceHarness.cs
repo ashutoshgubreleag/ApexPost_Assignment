@@ -1,11 +1,11 @@
+using ApexPost.Models.Domain;
+using ApexPost.Models.ValueObjects;
+using ApexPost.Services;
+using ApexPost.Services.Common;
+using ApexPost.Tests.Support.Fakes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ApexPost.Database.Models;
-using ApexPost.Models.ValueObjects;
-using ApexPost.Repositories.Json;
-using ApexPost.Services;
-using ApexPost.Services.Common;
 
 namespace ApexPost.Tests.Support;
 
@@ -18,32 +18,36 @@ public sealed class FakeClock(DateTimeOffset now) : TimeProvider
 }
 
 /// <summary>
-/// Real service graph (AddApexPostServices) over a private copy of the seed data in a temp folder,
-/// so business-rule tests exercise the actual services and JSON repositories, not mocks.
+/// UNIT-TEST harness: the real application services (AddApexPostServices) over in-memory fake
+/// repositories, a spy unit of work and fake query services. No database is involved.
+/// The SQL Server integration test project has a harness with the SAME public surface backed by
+/// EF Core and a disposable database, and compiles the very same Week 2 rule-test files against
+/// it: identical tests, two persistence layers (that is the refactor proof).
 /// </summary>
 public sealed class ServiceHarness : IAsyncDisposable
 {
     private readonly ServiceProvider _root;
 
-    private ServiceHarness(ServiceProvider root, string dataDirectory, FakeClock clock)
+    private ServiceHarness(ServiceProvider root, FakeClock clock)
     {
         _root = root;
-        DataDirectory = dataDirectory;
         Clock = clock;
     }
 
-    public string DataDirectory { get; }
     public FakeClock Clock { get; }
 
-    public static async Task<ServiceHarness> CreateAsync(IDictionary<string, string?>? overrides = null)
+    public InMemoryStore Store => _root.GetRequiredService<InMemoryStore>();
+
+    public static Task<ServiceHarness> CreateAsync(IDictionary<string, string?>? overrides = null)
     {
-        var dataDirectory = Path.Combine(Path.GetTempPath(), "apexpost-tests", Guid.NewGuid().ToString("N"));
         var settings = new Dictionary<string, string?>
         {
-            ["Storage:DataDirectory"] = dataDirectory,
             ["Courier:RateLookupLatencyMs"] = "1",
             ["Courier:TrackingLatencyMs"] = "1",
             ["Courier:TrackingTimeoutMs"] = "200",
+
+            // Many parallel "clerks" in the concurrency tests: allow enough optimistic retries.
+            ["BusinessRules:ConcurrencyRetryAttempts"] = "50",
         };
         foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
         {
@@ -55,11 +59,11 @@ public sealed class ServiceHarness : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddLogging(b => b.SetMinimumLevel(LogLevel.Warning));
         services.AddSingleton<TimeProvider>(clock);
-        services.AddApexPostServices(configuration, AppContext.BaseDirectory);
+        services.AddApexPostServices(configuration);
+        services.AddInMemoryPersistence();
 
         var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-        await JsonDataSeeder.EnsureSeededAsync(provider.GetRequiredService<JsonStorageSettings>(), CancellationToken.None);
-        return new ServiceHarness(provider, dataDirectory, clock);
+        return Task.FromResult(new ServiceHarness(provider, clock));
     }
 
     public T Get<T>() where T : notnull => _root.GetRequiredService<T>();
@@ -67,20 +71,17 @@ public sealed class ServiceHarness : IAsyncDisposable
     /// <summary>Resolves a scoped service in a fresh scope (like one HTTP request).</summary>
     public T Scoped<T>() where T : notnull => _root.CreateScope().ServiceProvider.GetRequiredService<T>();
 
+    /// <summary>A fresh scope, for tests that need several services (and the spy unit of work) from the same request.</summary>
+    public IServiceScope NewScope() => _root.CreateScope();
+
+    /// <summary>True when any stored value contains the text (used to prove secrets are never stored).</summary>
+    public Task<bool> StorageContainsAsync(string text) =>
+        Task.FromResult(Store.All<IdentityVerification>().Any(v => DomainCloner.Fingerprint(v).Contains(text, StringComparison.Ordinal))
+            || Store.All<CounterTransaction>().Any(t => DomainCloner.Fingerprint(t).Contains(text, StringComparison.Ordinal)));
+
     public static StaffContext Clerk(int id = 7, string branch = "BR-001") => new(id, StaffRole.CounterClerk, new BranchCode(branch), "Test clerk");
 
     public static StaffContext Manager(int id = 6, string branch = "BR-001") => new(id, StaffRole.BranchManager, new BranchCode(branch), "Test manager");
 
-    public async ValueTask DisposeAsync()
-    {
-        await _root.DisposeAsync();
-        try
-        {
-            Directory.Delete(DataDirectory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // Best effort clean-up of the temp folder.
-        }
-    }
+    public async ValueTask DisposeAsync() => await _root.DisposeAsync().ConfigureAwait(false);
 }

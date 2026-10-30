@@ -6,8 +6,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using ApexPost.MVC.Security;
-using ApexPost.Repositories.Json;
+using ApexPost.Database;
+using ApexPost.Database.Conventions;
+using ApexPost.Repositories;
+using ApexPost.Repositories.Seeding;
+using ApexPost.Utilities.Options;
+using Microsoft.EntityFrameworkCore;
 using ApexPost.Services;
 using ApexPost.Utilities;
 using ApexPost.Utilities.Filters;
@@ -31,16 +37,33 @@ public static class WebServiceRegistration
     public const string LoginRateLimitPolicy = "login";
     public const string PartnerRateLimitPolicy = "partner";
     public const string PartnerCorsPolicy = "PartnerTrackingWidget";
+    public const string DeviceRateLimitPolicy = "device";
 
     public static IServiceCollection AddApexPostWeb(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(environment);
 
-        services.AddApexPostServices(configuration, environment.ContentRootPath);
+        services.AddApexPostServices(configuration);
+        services.AddApexPostUtilities(configuration);
 
-        // The audit log lives next to the JSON data files.
-        services.AddApexPostUtilities(configuration, sp => sp.GetRequiredService<JsonStorageSettings>().DataDirectory);
+        // SQL Server system of record. The connection string is read lazily (after the host is
+        // built), so tests can override it; in Development it comes from user-secrets.
+        services.AddApexPostPersistence(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            return new PersistenceOptions
+            {
+                ConnectionString = config.GetConnectionString("ApexPostDb") ?? string.Empty,
+                LogSqlCommands = config.GetValue("Database:LogSqlCommands", environment.IsDevelopment()),
+                MaxRetryCount = config.GetValue("Database:MaxRetryCount", 3),
+            };
+        });
+        services.AddHttpContextAccessor();
+        services.AddSingleton<IAuditActor, HttpContextAuditActor>();
+        services.AddScoped<HistoricalDataSeeder>();
+        services.Configure<DatabaseStartupOptions>(configuration.GetSection(DatabaseStartupOptions.SectionName));
+        services.AddHostedService<DatabaseStartupService>();
 
         services.AddControllersWithViews(options =>
         {
@@ -76,7 +99,7 @@ public static class WebServiceRegistration
         AddRateLimiting(services, configuration);
         AddCors(services, configuration);
 
-        services.AddHealthChecks().AddCheck<StorageHealthCheck>("json-storage");
+        services.AddHealthChecks().AddCheck<SqlServerHealthCheck>("sql-server");
 
         // Only trust X-Forwarded-* from known proxies: the framework default (loopback, i.e. a reverse
         // proxy on the same machine) plus any listed in configuration. NEVER clear both lists: with no
@@ -126,7 +149,8 @@ public static class WebServiceRegistration
                     },
                     OnRedirectToLogin = context =>
                     {
-                        if (context.Request.Path.StartsWithSegments("/integration", StringComparison.OrdinalIgnoreCase))
+                        if (context.Request.Path.StartsWithSegments("/integration", StringComparison.OrdinalIgnoreCase)
+                            || context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
                         {
                             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                             return Task.CompletedTask;
@@ -175,6 +199,17 @@ public static class WebServiceRegistration
                     QueueLimit = 0,
                 }));
 
+            // Per counter terminal (identified by the validated device id): a misbehaving device
+            // retrying in a tight loop cannot flood the sync endpoint.
+            options.AddPolicy(DeviceRateLimitPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
+                http.Items[DeviceAuthenticationMiddleware.DeviceItemKey] as string ?? "unidentified",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = http.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<SyncOptions>>().Value.RequestsPerMinute,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }));
+
             // Per partner (identified by the validated API key), so one partner cannot starve another
             // and rotating source IPs does not reset the budget.
             options.AddPolicy(PartnerRateLimitPolicy, http => RateLimitPartition.GetTokenBucketLimiter(
@@ -199,20 +234,85 @@ public static class WebServiceRegistration
     }
 }
 
-/// <summary>Health check: the JSON data directory exists and is writable.</summary>
-public sealed class StorageHealthCheck(JsonStorageSettings settings) : IHealthCheck
+/// <summary>Health check: SQL Server is reachable with the configured connection string.</summary>
+public sealed class SqlServerHealthCheck(IServiceScopeFactory scopes) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        try
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApexPostDbContext>();
+        return await db.Database.CanConnectAsync(cancellationToken).ConfigureAwait(false)
+            ? HealthCheckResult.Healthy("SQL Server is reachable.")
+            : HealthCheckResult.Unhealthy("SQL Server is not reachable.");
+    }
+}
+
+/// <summary>Records the signed-in staff member in the CreatedBy audit column ("system" for background work).</summary>
+public sealed class HttpContextAuditActor(IHttpContextAccessor accessor) : IAuditActor
+{
+    public string Name
+    {
+        get
         {
-            var probe = Path.Combine(settings.DataDirectory, ".health");
-            await File.WriteAllTextAsync(probe, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
-            return HealthCheckResult.Healthy("JSON storage is writable.");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return HealthCheckResult.Unhealthy("JSON storage is not writable.");
+            var http = accessor.HttpContext;
+            if (http?.Items[DeviceAuthenticationMiddleware.DeviceItemKey] is string device)
+            {
+                return $"device:{device}";
+            }
+
+            var staffId = http?.User.FindFirst(ApexPostClaims.StaffId)?.Value;
+            return staffId is null ? "system" : $"staff:{staffId}";
         }
     }
+}
+
+/// <summary>Section <c>Database</c>: what to do with the database when the app starts.</summary>
+public sealed class DatabaseStartupOptions
+{
+    public const string SectionName = "Database";
+
+    /// <summary>Apply pending migrations at startup. Development convenience only; production uses the idempotent script.</summary>
+    public bool MigrateOnStartup { get; set; }
+
+    /// <summary>Generate the fictional historical transactions when the database has none.</summary>
+    public bool SeedHistory { get; set; }
+
+    public int HistoryDays { get; set; } = 60;
+
+    public int TransactionsPerBranchPerDay { get; set; } = 10;
+}
+
+/// <summary>
+/// Development helper: applies migrations (never EnsureCreated) and seeds history. In every other
+/// environment both switches are off and the database is deployed with database/schema.sql.
+/// </summary>
+public sealed partial class DatabaseStartupService(IServiceScopeFactory scopes, IOptions<DatabaseStartupOptions> options, ILogger<DatabaseStartupService> logger) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        var settings = options.Value;
+        if (!settings.MigrateOnStartup && !settings.SeedHistory)
+        {
+            return;
+        }
+
+        await using var scope = scopes.CreateAsyncScope();
+        if (settings.MigrateOnStartup)
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApexPostDbContext>();
+            await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+            LogMigrated();
+        }
+
+        if (settings.SeedHistory)
+        {
+            await scope.ServiceProvider.GetRequiredService<HistoricalDataSeeder>()
+                .SeedAsync(settings.HistoryDays, settings.TransactionsPerBranchPerDay, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Database migrations applied")]
+    private partial void LogMigrated();
 }

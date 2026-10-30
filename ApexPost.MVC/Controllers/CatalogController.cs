@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.ValueObjects;
 using ApexPost.MVC.Models;
 using ApexPost.MVC.Security;
@@ -52,5 +53,24 @@ public sealed class CatalogController(IProductCatalogService catalog, IInventory
 
         Flash($"{row.Sku} at {row.BranchCode} is now {row.QuantityOnHand}.");
         return RedirectToAction(nameof(Index), new { branch = model.BranchCode });
+    }
+
+    /// <summary>Set-based price revision for a whole category (one UPDATE via ExecuteUpdateAsync).</summary>
+    [Authorize(Roles = nameof(StaffRole.Administrator))]
+    [HttpPost]
+    [RedirectOnInvalidModel(nameof(Index))]
+    [Audited("Catalog.RevisePrices", "Category", "PercentChange", "Reason")]
+    public async Task<IActionResult> RevisePrices(RevisePricesViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var changed = await catalog.RevisePricesAsync(new RevisePricesCommand
+        {
+            Category = model.Category,
+            PercentChange = model.PercentChange,
+            Reason = model.Reason,
+        }, Actor, cancellationToken);
+
+        Flash($"{changed} {model.Category} price(s) revised by {model.PercentChange}%.");
+        return RedirectToAction(nameof(Index));
     }
 }

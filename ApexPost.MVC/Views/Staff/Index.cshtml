@@ -1,4 +1,4 @@
-@model IReadOnlyList<StaffEntity>
+@model IReadOnlyList<StaffDto>
 @{
     ViewData["Title"] = "Staff";
     var canManage = User.StaffRole is StaffRole.Administrator or StaffRole.BranchManager;

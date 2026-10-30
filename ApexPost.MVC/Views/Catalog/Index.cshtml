@@ -1,4 +1,4 @@
-@model IReadOnlyList<ApexPost.Services.Catalog.CatalogueItem>
+@model IReadOnlyList<ApexPost.Services.Abstractions.CatalogueItem>
 @{
     ViewData["Title"] = "Catalogue and stock";
     var branch = ViewData["Branch"] as string ?? "";
@@ -63,6 +63,22 @@
             <div><label for="adj-qty">Change (+ receive, − write off)</label><input id="adj-qty" type="number" name="QuantityChange" value="10" min="-1000" max="1000" /></div>
             <div><label for="adj-reason">Reason</label><input id="adj-reason" type="text" name="Reason" placeholder="Delivery from DC" /></div>
             <div><label>&nbsp;</label><button type="submit" class="btn">Apply</button></div>
+        </form>
+    </div>
+}
+@if (User.StaffRole == StaffRole.Administrator)
+{
+    <div class="card mt">
+        <h2>Revise prices (whole category)</h2>
+        <p class="help">One set-based UPDATE in the database (ExecuteUpdateAsync); the counters pick up the new prices on their next sync.</p>
+        <form asp-action="RevisePrices" method="post" class="form-grid">
+            <div>
+                <label for="rev-cat">Category</label>
+                <select id="rev-cat" name="Category" asp-items="Html.GetEnumSelectList<ProductCategory>()"></select>
+            </div>
+            <div><label for="rev-pct">Change %</label><input id="rev-pct" type="number" name="PercentChange" value="5" min="-50" max="50" step="0.5" /></div>
+            <div><label for="rev-reason">Reason</label><input id="rev-reason" type="text" name="Reason" placeholder="Supplier price increase" /></div>
+            <div><label>&nbsp;</label><button type="submit" class="btn" data-confirm="Revise all prices in this category?">Revise</button></div>
         </form>
     </div>
 }

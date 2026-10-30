@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 
 namespace ApexPost.MVC.Models;
 
@@ -69,7 +70,7 @@ public sealed class OpenTransactionViewModel
     [Range(1, 20), Display(Name = "Counter terminal")]
     public int CounterTerminalId { get; set; } = 1;
 
-    public IReadOnlyList<CounterTerminalEntity> Counters { get; set; } = [];
+    public IReadOnlyList<CounterDto> Counters { get; set; } = [];
     public string BranchCode { get; set; } = string.Empty;
     public string BranchName { get; set; } = string.Empty;
 }
@@ -179,4 +180,17 @@ public sealed class IdentityVerificationFormViewModel
 
     [Required, Display(Name = "Check result")]
     public VerificationResult Result { get; set; } = VerificationResult.Passed;
+}
+
+/// <summary>Request DTO for the admin price revision form (validated before the command is built).</summary>
+public sealed class RevisePricesViewModel
+{
+    [Required]
+    public ProductCategory Category { get; set; }
+
+    [Range(-50, 50)]
+    public decimal PercentChange { get; set; }
+
+    [Required, StringLength(200, MinimumLength = 5)]
+    public string Reason { get; set; } = string.Empty;
 }

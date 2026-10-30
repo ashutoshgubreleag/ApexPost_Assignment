@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.ValueObjects;
 using ApexPost.Services.Common;
 
@@ -35,7 +36,7 @@ public static class ClaimsPrincipalExtensions
     }
 
     /// <summary>Builds the principal issued at sign-in.</summary>
-    public static ClaimsPrincipal CreatePrincipal(StaffEntity staff, string authenticationScheme)
+    public static ClaimsPrincipal CreatePrincipal(StaffDto staff, string authenticationScheme)
     {
         ArgumentNullException.ThrowIfNull(staff);
         var claims = new List<Claim>

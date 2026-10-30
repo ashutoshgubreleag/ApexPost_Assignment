@@ -9,6 +9,7 @@
     <a class="card" asp-action="ShippingVolume"><h2>Shipping volume</h2><p>Lodged letters and parcels by destination zone and service level.</p></a>
     @if (User.StaffRole is not StaffRole.CounterClerk)
     {
+        <a class="card" asp-action="SyncConflicts"><h2>Offline sync conflicts</h2><p>Sales from offline counter terminals that need review: price changed while offline or stock oversold.</p></a>
         <a class="card" asp-action="MoneyOrders"><h2>Money orders and identity checks</h2><p>The auditor view: money orders issued and identity verifications per branch.</p></a>
     }
 </div>

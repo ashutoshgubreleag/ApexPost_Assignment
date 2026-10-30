@@ -3,9 +3,14 @@
     <File Path="Directory.Build.props" />
     <File Path="README.md" />
     <File Path="DESIGN.md" />
+    <File Path="PERFORMANCE.md" />
+    <File Path="CONFLICTS.md" />
+    <File Path="docs/DEMO.md" />
     <File Path="AUDIT-SAMPLE.json" />
     <File Path="ApexPost-Postman-Collection.json" />
-    <File Path="scripts/finalize-week2.ps1" />
+    <File Path="database/schema.sql" />
+    <File Path="scripts/run-perf.ps1" />
+    <File Path="scripts/verify-week3.ps1" />
   </Folder>
   <Project Path="ApexPost.Models/ApexPost.Models.csproj" />
   <Project Path="ApexPost.Database/ApexPost.Database.csproj" />

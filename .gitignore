@@ -27,3 +27,4 @@ appsettings.*.local.json
 # Counter terminal local Couchbase Lite data
 terminal-data/
 *.cblite2/
+artifacts/

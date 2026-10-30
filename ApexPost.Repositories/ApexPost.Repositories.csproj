@@ -1,6 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Repository abstractions and the async JSON-file implementation. Swapped for a database next week. -->
+  <!--
+    Data access (part of the brief's "Infrastructure"): EF Core implementations of the application's
+    ports - specific repositories, the unit of work, query services (AsNoTracking projections and
+    stored procedure calls) and the SQL audit store. Depends inward on ApexPost.Services and
+    ApexPost.Database; nothing depends on it except the composition root.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ApexPost.Database\ApexPost.Database.csproj" />
+    <ProjectReference Include="..\ApexPost.Services\ApexPost.Services.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ApexPost.Tests" />
   </ItemGroup>
 </Project>

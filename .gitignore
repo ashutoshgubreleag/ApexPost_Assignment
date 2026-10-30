@@ -28,3 +28,4 @@ appsettings.*.local.json
 terminal-data/
 *.cblite2/
 artifacts/
+*.bundle

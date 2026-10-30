@@ -1,4 +1,4 @@
-namespace ApexPost.Repositories.Specifications;
+namespace ApexPost.Models.Specifications;
 
 /// <summary>A reusable, composable filter over entities.</summary>
 public interface ISpecification<in T>

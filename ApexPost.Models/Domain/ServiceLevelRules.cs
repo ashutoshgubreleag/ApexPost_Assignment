@@ -1,8 +1,8 @@
-using ApexPost.Database.Models;
+
 using ApexPost.Models.Exceptions;
 using ApexPost.Models.ValueObjects;
 
-namespace ApexPost.Services.Shipping;
+namespace ApexPost.Models.Domain;
 
 /// <summary>Service-level limits expressed with tuple and relational patterns.</summary>
 public static class ServiceLevelRules

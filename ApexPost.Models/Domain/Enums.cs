@@ -1,4 +1,4 @@
-namespace ApexPost.Database.Models;
+namespace ApexPost.Models.Domain;
 
 public enum ProductCategory
 {
@@ -100,5 +100,35 @@ public enum NotificationType
     LowStock,
     HighValueMoneyOrder,
     TransactionVoided,
-    TransactionRefunded
+    TransactionRefunded,
+    PriceRevision,
+    SyncConflict
+}
+
+/// <summary>Where a counter transaction was captured.</summary>
+public enum TransactionSource
+{
+    Counter,
+    OfflineTerminal
+}
+
+/// <summary>Outcome recorded in the SyncInbox for one pushed offline sale.</summary>
+public enum SyncOutcome
+{
+    Accepted,
+    AcceptedWithWarnings,
+    Rejected
+}
+
+/// <summary>Conflicts detected while applying offline sales; each needs a person to review it.</summary>
+public enum SyncConflictType
+{
+    PriceVariance,
+    StockShortfall
+}
+
+public enum SyncConflictStatus
+{
+    Open,
+    Resolved
 }

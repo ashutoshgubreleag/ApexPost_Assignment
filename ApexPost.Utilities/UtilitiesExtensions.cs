@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ApexPost.Utilities.Audit;
 using ApexPost.Utilities.Filters;
 using ApexPost.Utilities.Options;
 
@@ -14,7 +13,7 @@ public static class UtilitiesExtensions
     /// (a scoped service captured there would leak one request's state into every later request).
     /// Filters added with <c>AddService</c> are resolved from DI with the same rule.
     /// </summary>
-    public static IServiceCollection AddApexPostUtilities(this IServiceCollection services, IConfiguration configuration, Func<IServiceProvider, string> dataDirectory)
+    public static IServiceCollection AddApexPostUtilities(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
@@ -22,14 +21,9 @@ public static class UtilitiesExtensions
         services.Configure<IpRestrictionOptions>(configuration.GetSection(IpRestrictionOptions.SectionName));
         services.Configure<IntegrationOptions>(configuration.GetSection(IntegrationOptions.SectionName));
         services.Configure<PerformanceOptions>(configuration.GetSection(PerformanceOptions.SectionName));
+        services.Configure<SyncOptions>(configuration.GetSection(SyncOptions.SectionName));
 
-        ArgumentNullException.ThrowIfNull(dataDirectory);
-        services.AddSingleton<IAuditStore>(sp =>
-        {
-            var audit = configuration.GetSection(AuditOptions.SectionName).Get<AuditOptions>() ?? new AuditOptions();
-            return new JsonAuditStore(Path.IsPathRooted(audit.FilePath) ? audit.FilePath : Path.Combine(dataDirectory(sp), audit.FilePath));
-        });
-
+        // IAuditStore (SQL, outside the request's unit of work) is registered by the persistence layer.
         services.AddSingleton<AuditActionFilter>();
         services.AddSingleton<PerformanceFilter>();
         services.AddSingleton<ValidationFilter>();

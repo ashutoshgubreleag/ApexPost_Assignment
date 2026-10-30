@@ -48,11 +48,27 @@ public sealed class PerformanceOptions
     public int SlowActionThresholdMs { get; set; } = 500;
 }
 
-/// <summary>Section <c>Audit</c>.</summary>
-public sealed class AuditOptions
+/// <summary>
+/// Registered counter terminals (section <c>Sync</c>). Each device has its own key and is bound to
+/// one branch. Keys come from user-secrets / environment variables
+/// (<c>Sync__Devices__TERM-BR001-01__Key</c>), never from appsettings.json in source control.
+/// </summary>
+public sealed class SyncOptions
 {
-    public const string SectionName = "Audit";
+    public const string SectionName = "Sync";
 
-    /// <summary>JSON Lines file; resolved against the data directory when relative.</summary>
-    public string FilePath { get; set; } = "audit-log.jsonl";
+    public Dictionary<string, DeviceRegistration> Devices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Most sales accepted in one push (the terminal sends batches).</summary>
+    public int MaxSalesPerPush { get; set; } = 50;
+
+    /// <summary>Push/pull requests allowed per device per minute.</summary>
+    public int RequestsPerMinute { get; set; } = 30;
+}
+
+public sealed class DeviceRegistration
+{
+    public string Key { get; set; } = string.Empty;
+
+    public string BranchCode { get; set; } = string.Empty;
 }

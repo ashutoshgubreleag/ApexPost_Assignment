@@ -25,3 +25,12 @@ public sealed class IpRestrictedAttribute : Attribute
 public sealed class JsonApiAttribute : Attribute
 {
 }
+
+/// <summary>
+/// Marks counter-terminal endpoints (/api/sync). <see cref="Middleware.DeviceAuthenticationMiddleware"/>
+/// requires the X-Device-Id and X-Device-Key headers and binds the request to the device's branch.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public sealed class DeviceAuthenticatedAttribute : Attribute
+{
+}

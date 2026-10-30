@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Extensions.Logging;
 using ApexPost.Utilities.Audit;
+using ApexPost.Services.Abstractions;
 using ApexPost.Utilities.Middleware;
 
 namespace ApexPost.Utilities.Filters;

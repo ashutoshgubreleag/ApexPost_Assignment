@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Wire contracts for the offline sync API, shared by ApexPost.MVC (server) and
+       ApexPost.CounterTerminal (client). Plain records, no dependencies, versioned by SchemaVersion. -->
+</Project>

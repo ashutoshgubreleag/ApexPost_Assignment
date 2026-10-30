@@ -14,6 +14,7 @@ public static class DomainExceptionMapper
         ForbiddenOperationException => StatusCodes.Status403Forbidden,
         EntityNotFoundException => StatusCodes.Status404NotFound,
         BusinessRuleViolationException => StatusCodes.Status422UnprocessableEntity,
+        ConcurrencyConflictException => StatusCodes.Status409Conflict,
         OperationCanceledException => 499, // client closed request (nginx convention); nobody reads it
         _ => StatusCodes.Status500InternalServerError,
     };
@@ -24,6 +25,7 @@ public static class DomainExceptionMapper
         CommandValidationException => "VALIDATION_FAILED",
         ForbiddenOperationException => "FORBIDDEN",
         EntityNotFoundException => "NOT_FOUND",
+        ConcurrencyConflictException => "CONCURRENCY_CONFLICT",
         _ => exception.GetType().Name,
     };
 
@@ -32,6 +34,7 @@ public static class DomainExceptionMapper
         400 => "Validation failed",
         403 => "Forbidden",
         404 => "Not found",
+        409 => "Conflicting change",
         422 => "Business rule violated",
         _ => "An unexpected error occurred",
     };

@@ -23,3 +23,7 @@ secrets.json
 appsettings.*.local.json
 *.pfx
 .env
+
+# Counter terminal local Couchbase Lite data
+terminal-data/
+*.cblite2/

@@ -33,7 +33,7 @@ BEGIN
         [DurationMs] bigint NOT NULL,
         [CorrelationId] varchar(64) NOT NULL,
         CONSTRAINT [PK_AuditEntries] PRIMARY KEY NONCLUSTERED ([Id]),
-        CONSTRAINT [CK_AuditEntries_Outcome] CHECK ([Outcome] IN ('Success', 'Failure', 'Rejected'))
+        CONSTRAINT [CK_AuditEntries_Outcome] CHECK ([Outcome] IN ('Succeeded', 'Rejected', 'Failed'))
     );
 END;
 

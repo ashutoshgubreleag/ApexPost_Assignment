@@ -17,4 +17,5 @@
   <Project Path="ApexPost.CounterTerminal/ApexPost.CounterTerminal.csproj" />
   <Project Path="ApexPost.Tests/ApexPost.Tests.csproj" />
   <Project Path="ApexPost.CounterTerminal.Tests/ApexPost.CounterTerminal.Tests.csproj" />
+  <Project Path="ApexPost.IntegrationTests/ApexPost.IntegrationTests.csproj" />
 </Solution>

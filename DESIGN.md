@@ -411,8 +411,9 @@ exist alone (counters, rates, lines, payments, conflicts). Closing a branch is a
 **Decision**: a persisted `BusinessDate` column with `(BranchCode, BusinessDate) INCLUDE (totals)`;
 a filtered `(ClosedAtUtc) WHERE Status='Paid'` index; `(ZoneCode, ServiceLevel, QuotedAtUtc DESC)`
 covering; filtered money-order audit index; covering branch-stock index. Queries were rewritten to
-be SARGable (range instead of `YEAR()`/`MONTH()`). **Consequences**: extra write cost on inserts
-(measured as acceptable in PERFORMANCE.md); every index is justified by a captured plan.
+be SARGable (range instead of `YEAR()`/`MONTH()`). **Consequences**: logical reads fell 99.0–99.9% on the four reporting workloads (PERFORMANCE.md
+§4); every "before" plan's missing-index hint disappears; extra write cost on inserts is the price,
+accepted because the hot path touches only two of the indexes.
 
 ### ADR-W3-03: Stored procedures only where they earn their place
 **Context**: the brief asks for three procedures; EF LINQ covers most queries. **Decision**: a fixed

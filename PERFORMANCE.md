@@ -3,17 +3,17 @@
 This document records how the five reporting indexes (migration `AddReportingIndexes`, ADR-W3-02)
 and two query rewrites were chosen, and what they changed, measured on real execution plans.
 
-> **Status:** the method, workloads and scripts are final. The measured numbers in §4 come from
-> `scripts/run-perf.ps1` on the reference PC (SQL Server 2025) and are pasted from
-> `database/perf/results/summary.md`; the actual plans are committed next to it as `.sqlplan` files.
-> Numbers marked _pending_ have not been measured yet: nothing in this file is estimated.
+> Every number below was measured by `scripts/run-perf.ps1` on 2026-10-31 and copied from
+> `database/perf/results/summary.md`. The **actual** execution plans are committed in
+> `database/perf/results/before/` and `after/` (`.sqlplan`, open in SSMS or Azure Data Studio), with
+> the raw `STATISTICS IO/TIME` output next to each plan (`.txt`). Nothing here is estimated.
 
 ## 1. Method
 
 | Item | Value |
 | --- | --- |
 | Database | Separate `ApexPostPerf` database built from `database/schema.sql` (same migrations as the app) |
-| Volume | `database/perf/00-generate-volume.sql`, `@Rows = 300000`: 300k transactions over 730 days, 450k transaction lines (1.5 per transaction), 100k shipments, ~48k money orders. Deterministic and fictional |
+| Volume | `database/perf/00-generate-volume.sql`, `@Rows = 300000`: 300,000 transactions over 730 days, 450,000 transaction lines, 99,999 shipments and 48,667 money orders, spread evenly over the six branches, ten zones and three service levels. Deterministic and fictional |
 | Before | `10-drop-reporting-indexes.sql` (only the PK/FK/unique indexes from `InitialCreate` remain), statistics updated |
 | After | `20-create-reporting-indexes.sql` (identical definitions to the migration), statistics updated |
 | Measurement | `SET STATISTICS IO, TIME ON`; one warm-up run then 3 measured runs per workload; logical reads (deterministic) and median CPU / elapsed time |
@@ -59,34 +59,97 @@ were not added.
 
 ## 4. Results
 
-Environment: _pending_ (filled from `summary.md`: SQL Server version, machine, row counts).
+Environment: SQL Server 2025 (17.00.1000) Enterprise Evaluation, default instance, Windows 11
+(10.0.22000) developer PC. Volume: 300,000 `CounterTransactions`, 450,000 `TransactionLines`,
+99,999 `Shipments`, 48,667 `MoneyOrders`, 192 `BranchStock`.
 
-| Workload | Logical reads before | Logical reads after | CPU ms before | CPU ms after | Elapsed ms before | Elapsed ms after | Plan before → after |
+| Workload | Logical reads before | Logical reads after | Change | CPU ms before → after | Elapsed ms before → after | Rows | Plan before → after |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| W1a original (YEAR/MONTH/DAY) | _pending_ | _pending_ | | | | | |
-| W1b rewritten (BusinessDate) | _pending_ | _pending_ | | | | | |
-| W2a original (YEAR/MONTH) | _pending_ | _pending_ | | | | | |
-| W2b rewritten (range) | _pending_ | _pending_ | | | | | |
-| W3 shipping volume | _pending_ | _pending_ | | | | | |
-| W4 money order audit | _pending_ | _pending_ | | | | | |
-| W5 low stock (procedure) | _pending_ | _pending_ | | | | | |
+| W1a daily sales, original `YEAR/MONTH/DAY` | 5,523 | 1,650 | −70% | 62 → 63 | 62 → 60 | 1 | Clustered index scan → scan of the narrower filtered index + seek (index intersection) |
+| **W1b daily sales, rewritten `BusinessDate = @Day`** | 5,523 | **5** | **−99.9%** | 32 → 0 | 38 → 0 | 1 | Clustered index scan → **Index Seek** `IX_CounterTransactions_Branch_BusinessDate` |
+| W2a monthly revenue, original `YEAR/MONTH` | 5,523 | 1,240 | −78% | 109 → 63 | 111 → 75 | 6 | Clustered index scan → **Index Scan** of `IX_CounterTransactions_ClosedAt_Paid` |
+| **W2b monthly revenue, rewritten range** | 5,523 | **57** | **−99.0%** | 78 → 16 | 67 → 9 | 6 | Clustered index scan → **Index Seek** `IX_CounterTransactions_ClosedAt_Paid` |
+| W3 shipping volume (zone + level + quarter) | 1,932 | 8 | −99.6% | 16 → 0 | 20 → 1 | 6 | Clustered index scan → **Index Seek** `IX_Shipments_Zone_Level_QuotedAt` |
+| W4 money-order audit (branch + month) | 1,041 | 7 | −99.3% | 15 → 0 | 11 → 1 | 342 | Clustered index scan → **Index Seek** `IX_MoneyOrders_Branch_RequestedAt_Audited` |
+| W5 low stock (`usp_LowStockReport`) | 56 | 54 | −4% | 15 → 0 | 9 → 5 | 13 | Clustered index scan → **Index Seek** `IX_BranchStock_Branch_Covering` |
 
-### 4.1 The rewrite: `YEAR()` versus a range
+CPU and elapsed times are medians of three warm runs. At this volume they are in the tens of
+milliseconds, so the 1 ms timer resolution makes "0" mean "under a millisecond". Logical reads are
+the reliable comparison.
 
-_pending: compare W2a-after with W2b-after (same indexes present), quoting the operator from each
-`.sqlplan` (scan versus seek) and the logical reads._
+### 4.1 The rewrite matters as much as the index
 
-### 4.2 Reading the plans
+The original and rewritten queries return the same rows. With all indexes present:
 
-_pending: for each "after" plan, the seek predicate, whether a key lookup remains, estimated
-versus actual rows._
+| | Operator (from the `.sqlplan`) | Logical reads |
+| --- | --- | ---: |
+| W2a `YEAR(ClosedAtUtc) = @Year AND MONTH(ClosedAtUtc) = @Month` | **Index Scan**: every row of `IX_CounterTransactions_ClosedAt_Paid` is read and `YEAR()`/`MONTH()` evaluated (est. 17,356 rows, actual 11,819) | 1,240 |
+| W2b `ClosedAtUtc >= @From AND ClosedAtUtc < @To` | **Index Seek** with a range seek predicate on the same index (est. 11,953, actual 11,819) | 57 |
+| W1a `YEAR()/MONTH()/DAY()` | Scan of the filtered index, then joined to a seek on the branch index: 46,000 rows touched to return 67 | 1,650 |
+| W1b `BusinessDate = @Day` | **Index Seek** on (`BranchCode`, `BusinessDate`) (est. 186, actual 67) | 5 |
+
+Wrapping the column in a function hides it from the index: SQL Server can only scan and compute.
+The new index made the scan smaller (narrower rows, paid rows only), but only the SARGable
+rewrite turns it into a seek: **22× fewer reads for W2, 330× for W1**. That is why the application
+queries use `BusinessDate` (persisted computed column) and half-open ranges, never `YEAR()`.
+
+### 4.2 Reading the "after" plans
+
+| Workload | Seek on | Key lookup? | Estimated vs actual rows | Missing-index hint |
+| --- | --- | --- | --- | --- |
+| W1b | `IX_CounterTransactions_Branch_BusinessDate` (BranchCode = @BranchCode, BusinessDate = @Day); `Status = 'Paid'` checked as a residual predicate on the INCLUDE column | No (covered) | 186 / 67 | none (before: 99.9% impact) |
+| W2b | `IX_CounterTransactions_ClosedAt_Paid` range on ClosedAtUtc; the index filter already guarantees `Status = 'Paid'` | No (covered) | 11,953 / 11,819 | none (before: 89.1%) |
+| W3 | `IX_Shipments_Zone_Level_QuotedAt` (ZoneCode, ServiceLevel equality + QuotedAtUtc range) | No (covered) | 2,698 / 405 | none (before: 93.4%) |
+| W4 | `IX_MoneyOrders_Branch_RequestedAt_Audited` (BranchCode equality + RequestedAtUtc range); filtered on Issued/Cancelled | No (covered) | 343 / 342 | none (before: 90.9%) |
+| W5 | `IX_BranchStock_Branch_Covering`, then `UQ_Products_Sku` for the product name | No | 18 / 13 | none |
+
+* Every "before" plan carried a missing-index recommendation (impact 88–99.9%), and every "after"
+  plan has none: the five indexes are exactly what the optimizer asked for, and nothing more.
+* Estimates are close to actuals except W3 (2,698 vs 405). The optimizer assumes zone, level and
+  date are independent. The plan shape is still the right one (a seek returning a few hundred
+  rows), so no hint or statistics change was made.
+* **W5 is honest about scale**: `BranchStock` has 192 rows, so the scan was already cheap (56 vs
+  54 reads). The index is kept because the per-branch stock screen runs on every page load and
+  the table grows with every new SKU. The procedure's `OPTION (RECOMPILE)` lets the plan seek for
+  one branch (shown) and scan when `@BranchCode` is NULL.
+
+### 4.3 Costs
+
+Each index is extra work on insert/update and extra storage. The hot write path (`PayAsync`)
+inserts one transaction (two of the indexes are on that table) and updates a few stock rows (one
+index, whose key `BranchCode` never changes). The money-order and shipment indexes are filtered or
+narrow. Write overhead and index size were not measured separately in this run; the
+generator's 300k-row load with all indexes in place took 33 s, including lines, shipments and money orders.
 
 ## 5. EF Core query shape
 
-* `ApexPost.IntegrationTests` writes the SQL of the recent-transactions list
-  (`TransactionQueries.RecentQuery(...).ToQueryString()`) to `sql-evidence/RecentTransactions.sql`;
-  it is a single parameterized `SELECT TOP(@p) ... ORDER BY` with a projection (no `SELECT *`).
-* `Read_queries_use_a_fixed_number_of_commands_no_n_plus_one` counts SQL commands with an
-  interceptor: the transaction list is **1** command for 5 transactions with 10 lines; the details
-  view is a fixed number of split queries regardless of the line count.
+Captured on SQL Server by the integration tests (all 27 pass), file
+`database/perf/results/RecentTransactions.sql`:
+
+```sql
+DECLARE @p int = 20;
+DECLARE @branch varchar(10) = 'BR-001';
+
+SELECT TOP(@p) [c].[Id], [c].[BranchCode], [c].[CounterNumber], [c].[ClerkStaffId], [c].[Source], [c].[Status], (
+    SELECT COALESCE(SUM([t].[Quantity]), 0)
+    FROM [dbo].[TransactionLines] AS [t]
+    WHERE [c].[Id] = [t].[TransactionId]), [c].[Subtotal], [c].[TaxAmount], [c].[PassThroughAmount], [c].[TotalAmount], (
+    SELECT TOP(1) [p].[Method]
+    FROM [dbo].[Payments] AS [p]
+    WHERE [c].[Id] = [p].[TransactionId]
+    ORDER BY [p].[Id] DESC), [c].[VoidReason], [c].[AuthorisedByStaffId], [c].[OpenedAtUtc], [c].[ClosedAtUtc]
+FROM [dbo].[CounterTransactions] AS [c]
+WHERE [c].[BranchCode] = @branch
+ORDER BY [c].[OpenedAtUtc] DESC
+```
+
+* `TransactionQueries.RecentQuery(...).ToQueryString()`: one statement, a projection of only the
+  columns the list shows, `TOP(@p)` and `@branch` as parameters (the `DECLARE` lines are how
+  `ToQueryString` displays parameter values; the statement itself never inlines them). The line
+  count and the last payment method are correlated sub-queries in the same statement, not extra
+  round trips.
+* `Read_queries_use_a_fixed_number_of_commands_no_n_plus_one` counts commands with an interceptor:
+  the list of 5 transactions is **1** command; the details view is **6** commands (3 split queries
+  for header/lines/payments, then shipments, money orders and verifications) for a 1-line and a
+  6-line transaction alike, so it does not grow with the data.
 * In Development, `Database:LogSqlCommands` logs every command with its parameters.

@@ -51,7 +51,7 @@ DECLARE @ZoneCount int = (SELECT COUNT(*) FROM #Zone);
     SELECT n.n,
            b.BranchCode, b.ClerkId, b.ManagerId,
            CASE WHEN n.n % 100 < 92 THEN 'Paid' WHEN n.n % 100 < 97 THEN 'Voided' ELSE 'Open' END AS Status,
-           CAST(((n.n * 7919) % 20000) / 100.0 + 1 AS decimal(18,2)) AS Subtotal,
+           CAST(((CAST(n.n AS bigint) * 7919) % 20000) / 100.0 + 1 AS decimal(18,2)) AS Subtotal,   -- bigint: n * 7919 overflows int above ~271k rows
            CASE WHEN n.n % 10 = 0 THEN CAST(100 AS decimal(18,2)) ELSE CAST(0 AS decimal(18,2)) END AS PassThrough,
            DATEADD(MINUTE, (CAST(n.n AS bigint) * 37) % (730 * 1440), @Origin) AS ClosedAt
     FROM n

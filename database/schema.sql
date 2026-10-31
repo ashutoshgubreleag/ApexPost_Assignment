@@ -1504,3 +1504,26 @@ END;
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [dbo].[__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261031075824_FixInactiveStaffSeed'
+)
+BEGIN
+    EXEC(N'UPDATE [Staff] SET [IsActive] = CAST(0 AS bit)
+    WHERE [Id] = 24;
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [dbo].[__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261031075824_FixInactiveStaffSeed'
+)
+BEGIN
+    INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261031075824_FixInactiveStaffSeed', N'10.0.14');
+END;
+
+COMMIT;
+GO
+

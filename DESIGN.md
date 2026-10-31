@@ -193,6 +193,7 @@ All constraints are named (`PK_`, `FK_`, `UQ_`, `CK_`, `DF_`), so errors and pla
 | `InitialCreate` | 20 tables, all constraints, seed data from the embedded JSON files (`HasData`) |
 | `AddReportingIndexes` | The five reporting indexes measured in PERFORMANCE.md |
 | `AddStoredProcedures` | `usp_DailyBranchSales`, `usp_LowStockReport`, `usp_AdjustStock`, the `apexpost_app` role |
+| `FixInactiveStaffSeed` | Data fix found by the SQL Server tests: `HasData` omits a `false` value for a column with a database default (`DF_Staff_IsActive = 1`), so the inactive demo clerk was seeded as active. The migration sets it back; the in-memory fakes could not reveal this |
 
 `database/schema.sql` is the **idempotent** script (`dotnet ef migrations script --idempotent`).
 Procedure bodies are wrapped in `EXEC(N'...')` so they can sit inside the script's

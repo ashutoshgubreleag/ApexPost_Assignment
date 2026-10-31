@@ -222,32 +222,51 @@ public sealed class SqlServerPersistenceTests(ITestOutputHelper output)
     {
         await using var harness = await ServiceHarness.CreateAsync();
         var clerk = ServiceHarness.Clerk();
-        var last = 0;
-        for (var i = 0; i < 5; i++)
+        var small = await PaidSaleAsync(harness, clerk, ("PKG-001", 1));
+        var large = await PaidSaleAsync(harness, clerk, ("PKG-001", 1), ("PKG-002", 1), ("PKG-003", 1), ("PKG-004", 1), ("PKG-005", 1), ("PKG-006", 1));
+        for (var i = 0; i < 3; i++)
         {
-            var tx = await harness.Scoped<ITransactionService>().OpenAsync(clerk, 1, CancellationToken.None);
-            await harness.Scoped<ITransactionService>().AddRetailItemAsync(tx.Id, new AddRetailItemCommand { Sku = "PKG-001", Quantity = 1 }, clerk, CancellationToken.None);
-            await harness.Scoped<ITransactionService>().AddRetailItemAsync(tx.Id, new AddRetailItemCommand { Sku = "PKG-002", Quantity = 1 }, clerk, CancellationToken.None);
-            await harness.Scoped<ITransactionService>().PayAsync(tx.Id, PaymentMethod.Cash, clerk, CancellationToken.None);
-            last = tx.Id;
+            await PaidSaleAsync(harness, clerk, ("PKG-002", 1), ("PKG-003", 1));
         }
 
         var recorder = new CommandRecorder();
         await using var db = harness.Database.NewContext(recorder);
         var queries = new TransactionQueries(db);
 
+        // The list is one projected query, however many transactions and lines there are.
         var recent = await queries.ListRecentAsync(Br001, 50, CancellationToken.None);
         Assert.Equal(5, recent.Count);
         Assert.Single(recorder.Commands);
 
+        // The details view is a FIXED set of queries: 3 split queries for the aggregate (header,
+        // lines, payments) + shipments + money orders + verifications. It must not grow with the
+        // number of lines (that would be N+1).
         recorder.Clear();
-        var details = await queries.GetDetailsAsync(last, CancellationToken.None);
+        Assert.NotNull(await queries.GetDetailsAsync(small, CancellationToken.None));
+        var smallCount = recorder.Commands.Count;
+
+        recorder.Clear();
+        var details = await queries.GetDetailsAsync(large, CancellationToken.None);
         Assert.NotNull(details);
-        Assert.InRange(recorder.Commands.Count, 1, 4);
+        Assert.Equal(6, details.Lines.Count);
+        Assert.Equal(smallCount, recorder.Commands.Count);
+        Assert.InRange(recorder.Commands.Count, 1, 6);
         foreach (var sql in recorder.Commands)
         {
             output.WriteLine(sql);
         }
+    }
+
+    private static async Task<int> PaidSaleAsync(ServiceHarness harness, ApexPost.Services.Common.StaffContext clerk, params (string Sku, int Quantity)[] items)
+    {
+        var tx = await harness.Scoped<ITransactionService>().OpenAsync(clerk, 1, CancellationToken.None);
+        foreach (var (sku, quantity) in items)
+        {
+            await harness.Scoped<ITransactionService>().AddRetailItemAsync(tx.Id, new AddRetailItemCommand { Sku = sku, Quantity = quantity }, clerk, CancellationToken.None);
+        }
+
+        await harness.Scoped<ITransactionService>().PayAsync(tx.Id, PaymentMethod.Cash, clerk, CancellationToken.None);
+        return tx.Id;
     }
 
     [Fact]
@@ -259,9 +278,13 @@ public sealed class SqlServerPersistenceTests(ITestOutputHelper output)
         var sql = new TransactionQueries(db).RecentQuery(Br001, 20).ToQueryString();
         output.WriteLine(sql);
 
-        Assert.Contains("@", sql, StringComparison.Ordinal);
-        Assert.Contains("ORDER BY", sql, StringComparison.Ordinal);
-        Assert.DoesNotContain("'BR-001'", sql, StringComparison.Ordinal);
+        // ToQueryString prints each parameter as a DECLARE with its value for readability; the
+        // statement itself must reference the parameters, never inline the values.
+        var select = sql[sql.IndexOf("SELECT", StringComparison.Ordinal)..];
+        Assert.Contains("DECLARE @", sql, StringComparison.Ordinal);
+        Assert.Contains("@", select, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY", select, StringComparison.Ordinal);
+        Assert.DoesNotContain("'BR-001'", select, StringComparison.Ordinal);
         var folder = Path.Combine(AppContext.BaseDirectory, "sql-evidence");
         Directory.CreateDirectory(folder);
         await File.WriteAllTextAsync(Path.Combine(folder, "RecentTransactions.sql"), sql);

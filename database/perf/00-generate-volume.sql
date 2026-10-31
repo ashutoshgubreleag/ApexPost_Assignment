@@ -100,8 +100,8 @@ INSERT INTO dbo.Shipments
 SELECT 'PRF' + RIGHT('000000000' + CAST(t.Id AS varchar(12)), 9),
        t.Id,
        t.BranchCode,
-       CASE WHEN t.Id % 4 = 0 THEN 'Letter' ELSE 'Parcel' END,
-       CASE t.Id % 3 WHEN 0 THEN 'Standard' WHEN 1 THEN 'Express' ELSE 'Registered' END,
+       CASE WHEN (t.Id / 5) % 4 = 0 THEN 'Letter' ELSE 'Parcel' END,
+       CASE (t.Id / 7) % 3 WHEN 0 THEN 'Standard' WHEN 1 THEN 'Express' ELSE 'Registered' END,
        z.ZoneCode,
        CAST(0.1 + (t.Id % 200) / 10.0 AS decimal(9,3)),
        CAST(0.1 + (t.Id % 200) / 10.0 AS decimal(9,3)),
@@ -111,8 +111,10 @@ SELECT 'PRF' + RIGHT('000000000' + CAST(t.Id AS varchar(12)), 9),
        10, 20, 15,
        'perf-generator'
 FROM dbo.CounterTransactions AS t
-JOIN #Zone AS z ON z.ZoneIndex = t.Id % @ZoneCount
-WHERE t.Id > @FirstNewId AND t.Id % 3 = 0;
+JOIN #Zone AS z ON z.ZoneIndex = (t.Id / 11) % @ZoneCount
+-- 1 in 3 transactions, spread evenly over every branch (a plain t.Id % 3 would line up with the
+-- branch rotation t.Id % branches and put all shipments in two branches).
+WHERE t.Id > @FirstNewId AND (t.Id / 3) % 3 = t.Id % 3;
 
 -- 4. Money orders ---------------------------------------------------------------------------
 INSERT INTO dbo.MoneyOrders
@@ -124,12 +126,13 @@ SELECT 'PMO' + RIGHT('000000000' + CAST(t.Id AS varchar(12)), 9),
        CAST(5 AS decimal(18,2)),
        N'Perf Sender',
        N'Perf Recipient',
-       CASE WHEN t.Id % 10 = 0 THEN 'Cancelled' ELSE 'Issued' END,
+       CASE WHEN (t.Id / 13) % 10 = 0 THEN 'Cancelled' ELSE 'Issued' END,
        t.OpenedAtUtc,
-       CASE WHEN t.Id % 10 = 0 THEN NULL ELSE t.OpenedAtUtc END,
+       CASE WHEN (t.Id / 13) % 10 = 0 THEN NULL ELSE t.OpenedAtUtc END,
        'perf-generator'
 FROM dbo.CounterTransactions AS t
-WHERE t.Id > @FirstNewId AND t.Id % 6 = 0 AND t.Status <> 'Open';
+-- 1 in 6 transactions, spread evenly over every branch (see the shipments note).
+WHERE t.Id > @FirstNewId AND (t.Id / 6) % 6 = t.Id % 6 AND t.Status <> 'Open';
 
 UPDATE STATISTICS dbo.CounterTransactions WITH FULLSCAN;
 UPDATE STATISTICS dbo.TransactionLines WITH FULLSCAN;

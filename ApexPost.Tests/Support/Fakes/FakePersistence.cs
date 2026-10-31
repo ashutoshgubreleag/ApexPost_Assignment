@@ -256,13 +256,15 @@ public static class FakePersistenceRegistration
         services.AddScoped<ISyncInboxRepository, FakeSyncInboxRepository>();
 
         services.AddScoped<InMemoryQueries>();
-        services.AddScoped<IBranchQueries>(sp => sp.GetRequiredService<InMemoryQueries>());
-        services.AddScoped<IStaffQueries>(sp => sp.GetRequiredService<InMemoryQueries>());
-        services.AddScoped<ICatalogQueries>(sp => sp.GetRequiredService<InMemoryQueries>());
-        services.AddScoped<ITransactionQueries>(sp => sp.GetRequiredService<InMemoryQueries>());
-        services.AddScoped<IReportQueries>(sp => sp.GetRequiredService<InMemoryQueries>());
-        services.AddScoped<INotificationQueries>(sp => sp.GetRequiredService<InMemoryQueries>());
-        services.AddScoped<ISyncQueries>(sp => sp.GetRequiredService<InMemoryQueries>());
+        // One guard per scope, like the one DbContext per request: overlapping query calls throw.
+        services.AddScoped<ScopeOperationGuard>();
+        services.AddScoped(sp => GuardedProxy<IBranchQueries>.Create(sp.GetRequiredService<InMemoryQueries>(), sp.GetRequiredService<ScopeOperationGuard>()));
+        services.AddScoped(sp => GuardedProxy<IStaffQueries>.Create(sp.GetRequiredService<InMemoryQueries>(), sp.GetRequiredService<ScopeOperationGuard>()));
+        services.AddScoped(sp => GuardedProxy<ICatalogQueries>.Create(sp.GetRequiredService<InMemoryQueries>(), sp.GetRequiredService<ScopeOperationGuard>()));
+        services.AddScoped(sp => GuardedProxy<ITransactionQueries>.Create(sp.GetRequiredService<InMemoryQueries>(), sp.GetRequiredService<ScopeOperationGuard>()));
+        services.AddScoped(sp => GuardedProxy<IReportQueries>.Create(sp.GetRequiredService<InMemoryQueries>(), sp.GetRequiredService<ScopeOperationGuard>()));
+        services.AddScoped(sp => GuardedProxy<INotificationQueries>.Create(sp.GetRequiredService<InMemoryQueries>(), sp.GetRequiredService<ScopeOperationGuard>()));
+        services.AddScoped(sp => GuardedProxy<ISyncQueries>.Create(sp.GetRequiredService<InMemoryQueries>(), sp.GetRequiredService<ScopeOperationGuard>()));
         services.AddSingleton<InMemoryAuditStore>();
         services.AddSingleton<IAuditStore>(sp => sp.GetRequiredService<InMemoryAuditStore>());
         return services;

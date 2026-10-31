@@ -169,7 +169,7 @@ public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
     [Fact]
     public async Task CourierTracking_TimeoutIsAFailure_ButCallerCancellationIsNot()
     {
-        await using var harness = await ServiceHarness.CreateAsync(new Dictionary<string, string?> { ["Courier:TrackingTimeoutMs"] = "100" });
+        await using var harness = await ServiceHarness.CreateAsync(new Dictionary<string, string?> { ["Courier:TrackingTimeoutMs"] = "400" });
         var tracking = harness.Scoped<ICourierTrackingService>();
 
         // Our timeout: the caller is still waiting, so return a failure result.

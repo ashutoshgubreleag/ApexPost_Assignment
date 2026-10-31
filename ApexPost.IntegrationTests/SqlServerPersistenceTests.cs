@@ -2,6 +2,9 @@ using ApexPost.Models.Domain;
 using ApexPost.Models.Exceptions;
 using ApexPost.Models.ValueObjects;
 using ApexPost.Repositories.Queries;
+using ApexPost.Repositories.Seeding;
+using ApexPost.Services.Common;
+using Microsoft.Extensions.Logging.Abstractions;
 using ApexPost.Services.Abstractions;
 using ApexPost.Services.Inventory;
 using ApexPost.Services.Sync;
@@ -288,6 +291,33 @@ public sealed class SqlServerPersistenceTests(ITestOutputHelper output)
         var folder = Path.Combine(AppContext.BaseDirectory, "sql-evidence");
         Directory.CreateDirectory(folder);
         await File.WriteAllTextAsync(Path.Combine(folder, "RecentTransactions.sql"), sql);
+    }
+
+    [Fact]
+    public async Task Historical_seeder_creates_unique_references_and_runs_only_once()
+    {
+        await using var harness = await ServiceHarness.CreateAsync();
+        using var scope = harness.NewScope();
+        var seeder = new HistoricalDataSeeder(
+            scope.ServiceProvider.GetRequiredService<ApexPost.Database.ApexPostDbContext>(),
+            harness.Get<BusinessRules>(),
+            harness.Clock,
+            NullLogger<HistoricalDataSeeder>.Instance);
+
+        var seeded = await seeder.SeedAsync(days: 5, transactionsPerBranchPerDay: 12, CancellationToken.None);
+        var again = await seeder.SeedAsync(days: 5, transactionsPerBranchPerDay: 12, CancellationToken.None);
+
+        await using var db = harness.NewContext();
+        Assert.True(seeded > 0);
+        Assert.Equal(0, again);
+        Assert.Equal(seeded, await db.CounterTransactions.CountAsync());
+        Assert.True(await db.Shipments.CountAsync() > 0);
+        Assert.Equal(await db.Shipments.CountAsync(), await db.Shipments.Select(s => s.TrackingNumber).Distinct().CountAsync());
+        Assert.Equal(await db.IdentityVerifications.CountAsync(), await db.IdentityVerifications.Select(v => v.Reference).Distinct().CountAsync());
+
+        // Every shipment's tracking number matches the service line sold for it.
+        var unmatched = await db.Shipments.CountAsync(s => !db.TransactionLines.Any(l => l.TransactionId == s.TransactionId && l.ItemCode == s.TrackingNumber));
+        Assert.Equal(0, unmatched);
     }
 
     private static async Task<int> StockAsync(ServiceHarness harness, Sku sku)

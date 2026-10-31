@@ -25,6 +25,24 @@ public sealed partial class HistoricalDataSeeder(ApexPostDbContext db, BusinessR
             return 0;
         }
 
+        // All or nothing: a failure part-way must not leave a few days of history behind, because
+        // the "is it empty?" check above would then skip seeding for ever. The execution strategy
+        // owns the transaction so a transient-fault retry re-runs the whole seed from scratch.
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(
+            async ct =>
+            {
+                db.ChangeTracker.Clear();
+                await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+                var seeded = await SeedHistoryAsync(days, transactionsPerBranchPerDay, ct).ConfigureAwait(false);
+                await transaction.CommitAsync(ct).ConfigureAwait(false);
+                return seeded;
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<int> SeedHistoryAsync(int days, int transactionsPerBranchPerDay, CancellationToken cancellationToken)
+    {
         var random = new Random(20261030);
         var branches = await db.Branches.AsNoTracking().Include(b => b.Counters).Where(b => b.Status == BranchStatus.Active).ToListAsync(cancellationToken).ConfigureAwait(false);
         var clerks = await db.Staff.AsNoTracking().Where(s => s.IsActive && (s.Role == StaffRole.CounterClerk || s.Role == StaffRole.BranchManager)).ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -73,7 +91,11 @@ public sealed partial class HistoricalDataSeeder(ApexPostDbContext db, BusinessR
                         tx.AddServiceLine(TransactionLineType.Shipping, tracking, $"{type} {level} to {zone.Name}", price, taxCategory, TaxRules.TaxOn(price, taxCategory), Money.Zero);
                         var recipient = new Address("Sample Recipient", $"{random.Next(1, 300)} Example Street", "Sampleton", "NSW", "2000");
                         var at = openedAt;
-                        pendingShipments.Add((tx, txId => Shipment.Create(txId, branch.Code, type, level, zone.ZoneCode, weight, dims, Weight.Max(weight, dims.VolumetricWeight), recipient, price, at, serial)));
+
+                        // Copy the serial NOW: the lambda runs after the day's commit, and capturing the
+                        // variable itself would give every shipment of the day the same tracking number.
+                        var trackingSerial = serial;
+                        pendingShipments.Add((tx, txId => Shipment.Create(txId, branch.Code, type, level, zone.ZoneCode, weight, dims, Weight.Max(weight, dims.VolumetricWeight), recipient, price, at, trackingSerial)));
                     }
 
                     // About one in ten buys a money order; big ones get an identity check first.
@@ -96,7 +118,8 @@ public sealed partial class HistoricalDataSeeder(ApexPostDbContext db, BusinessR
                             var at = openedAt;
                             var docType = (DocumentType)random.Next(0, 3);
                             var number = $"X{random.Next(10_000_000, 99_999_999)}";
-                            pendingVerifications.Add((tx, txId => IdentityVerification.Record(txId, branch.Code, clerkId, "Sample Customer", docType, number, VerificationResult.Passed, at, serial), order));
+                            var referenceSerial = serial; // copied for the same reason as trackingSerial
+                            pendingVerifications.Add((tx, txId => IdentityVerification.Record(txId, branch.Code, clerkId, "Sample Customer", docType, number, VerificationResult.Passed, at, referenceSerial), order));
                         }
                     }
 

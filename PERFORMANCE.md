@@ -16,7 +16,7 @@ and two query rewrites were chosen, and what they changed, measured on real exec
 | Volume | `database/perf/00-generate-volume.sql`, `@Rows = 300000`: 300,000 transactions over 730 days, 450,000 transaction lines, 99,999 shipments and 48,667 money orders, spread evenly over the six branches, ten zones and three service levels. Deterministic and fictional |
 | Before | `10-drop-reporting-indexes.sql` (only the PK/FK/unique indexes from `InitialCreate` remain), statistics updated |
 | After | `20-create-reporting-indexes.sql` (identical definitions to the migration), statistics updated |
-| Measurement | `SET STATISTICS IO, TIME ON`; one warm-up run then 3 measured runs per workload; logical reads (deterministic) and median CPU / elapsed time |
+| Measurement | Seven read workloads (W1–W5) and two write workloads (W6–W7); `SET STATISTICS IO, TIME ON`; one warm-up run then 3 measured runs per workload; logical reads (deterministic) and median CPU / elapsed time |
 | Plans | `SET STATISTICS XML ON` on the last run: **actual** execution plans saved as `database/perf/results/{before,after}/<workload>.sqlplan` |
 | Parameters | Every workload is sent as a parameterized `SqlCommand` (values from the `--@` header lines), the same way EF Core sends them |
 
@@ -113,17 +113,26 @@ queries use `BusinessDate` (persisted computed column) and half-open ranges, nev
   the table grows with every new SKU. The procedure's `OPTION (RECOMPILE)` lets the plan seek for
   one branch (shown) and scan when `@BranchCode` is NULL.
 
-### 4.3 Costs
+### 4.3 Costs: write overhead and storage
 
-Each index is extra work on insert/update and extra storage. The hot write path (`PayAsync`)
-inserts one transaction (two of the indexes are on that table) and updates a few stock rows (one
-index, whose key `BranchCode` never changes). The money-order and shipment indexes are filtered or
-narrow. Write overhead and index size were not measured separately in this run; the
-generator's 300k-row load with all indexes in place took 33 s, including lines, shipments and money orders.
+Each index is extra work on every insert/update and extra storage. Two write workloads measure it
+the same way as the reads (before = without the reporting indexes, after = with them):
+
+| Workload | What it does |
+| --- | --- |
+| W6 write transactions | Inserts 20,000 paid `CounterTransactions` in one statement, then rolls back (2 reporting indexes to maintain) |
+| W7 write shipments | Inserts 20,000 `Shipments`, then rolls back (1 wide covering index to maintain) |
+
+_Write-cost and index-size numbers: pending the next `run-perf.ps1` run (W6/W7 and the storage table
+were added after the read measurements above). They will be copied here from `summary.md`._
+
+Context for the decision: the hot write path (`PayAsync`) inserts one transaction and updates a few
+stock rows, so per sale the extra cost is a handful of index rows, while the reads it speeds up run
+on every dashboard load and report.
 
 ## 5. EF Core query shape
 
-Captured on SQL Server by the integration tests (all 27 pass), file
+Captured on SQL Server by the integration tests, file
 `database/perf/results/RecentTransactions.sql`:
 
 ```sql

@@ -177,6 +177,23 @@ Write-Host "-- AFTER: reporting indexes created"
 Invoke-ScriptFile $db (Join-Path $perf "20-create-reporting-indexes.sql")
 Invoke-Batch $db "EXEC sys.sp_updatestats;"
 foreach ($w in $workloads) { $m = Measure-Workload $db $w "after"; $all += $m; Write-Host ("   {0,-34} reads {1,9:n0}  cpu {2,6} ms  elapsed {3,6} ms" -f $m.Workload, $m.LogicalReads, $m.CpuMs, $m.ElapsedMs) }
+
+# Storage cost of each reporting index (8 KB pages actually used).
+$sizes = $db.CreateCommand()
+$sizes.CommandText = @"
+SELECT OBJECT_NAME(i.object_id) AS TableName, i.name AS IndexName, SUM(s.used_page_count) * 8 AS UsedKb, SUM(s.row_count) AS IndexRows
+FROM sys.indexes AS i
+JOIN sys.dm_db_partition_stats AS s ON s.object_id = i.object_id AND s.index_id = i.index_id
+WHERE i.name IN ('IX_BranchStock_Branch_Covering','IX_CounterTransactions_Branch_BusinessDate','IX_CounterTransactions_ClosedAt_Paid',
+                 'IX_Shipments_Zone_Level_QuotedAt','IX_MoneyOrders_Branch_RequestedAt_Audited')
+   OR (i.index_id = 1 AND OBJECT_NAME(i.object_id) IN ('CounterTransactions','Shipments','MoneyOrders','BranchStock'))
+GROUP BY i.object_id, i.name, i.index_id
+ORDER BY TableName, i.index_id
+"@
+$sizeRows = @()
+$r = $sizes.ExecuteReader()
+while ($r.Read()) { $sizeRows += [pscustomobject]@{ Table = $r.GetString(0); Index = $r.GetString(1); UsedKb = $r.GetInt64(2); Rows = $r.GetInt64(3) } }
+$r.Close()
 $db.Close()
 
 $all | Export-Csv -NoTypeInformation -Path (Join-Path $results "summary.csv")
@@ -196,6 +213,14 @@ foreach ($w in $workloads) {
     $a = $all | Where-Object { $_.Phase -eq "after" -and $_.Workload -eq $w.BaseName }
     $lines += "| $($w.BaseName) | $($b.LogicalReads) | $($a.LogicalReads) | $($b.CpuMs) | $($a.CpuMs) | $($b.ElapsedMs) | $($a.ElapsedMs) | $($a.Rows) |"
 }
+$lines += ""
+$lines += "W6/W7 are write workloads (insert 20,000 rows, then roll back): the 'after' minus 'before' difference is the index maintenance cost."
+$lines += ""
+$lines += "## Index storage (after)"
+$lines += ""
+$lines += "| Table | Index | Used KB | Rows |"
+$lines += "|---|---|---:|---:|"
+foreach ($row in $sizeRows) { $lines += "| $($row.Table) | $($row.Index) | $($row.UsedKb) | $($row.Rows) |" }
 Set-Content -Path (Join-Path $results "summary.md") -Value $lines -Encoding UTF8
 Write-Host ""
 Write-Host "Results: $results (summary.md, summary.csv, before\*.sqlplan, after\*.sqlplan)"

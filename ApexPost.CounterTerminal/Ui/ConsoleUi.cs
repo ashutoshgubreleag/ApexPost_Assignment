@@ -73,7 +73,7 @@ public sealed class ConsoleUi(TerminalService terminal, SyncWorker sync, INetwor
                     break;
                 case "today":
                     var (count, total) = terminal.TodaysSales();
-                    output.WriteLine($"Today: {count} sale(s), {total}");
+                    output.WriteLine($"Today: {count} sale(s), {total} before tax (the server adds tax on sync)");
                     break;
                 case "sync":
                     Report(await sync.SyncOnceAsync(cancellationToken).ConfigureAwait(false));
@@ -206,7 +206,7 @@ public sealed class ConsoleUi(TerminalService terminal, SyncWorker sync, INetwor
 
     private void Print(PendingSale sale)
     {
-        output.WriteLine($"Sale {sale.LocalTransactionId:D}  [{sale.Status}]  {sale.PaymentMethod}  total {sale.Total}");
+        output.WriteLine($"Sale {sale.LocalTransactionId:D}  [{sale.Status}]  {sale.PaymentMethod}  {sale.Total} before tax (tax added by the server on sync)");
         foreach (var line in sale.Lines)
         {
             output.WriteLine($"  {line.Quantity} x {line.Name} ({line.Sku.Value}) @ {line.UnitPrice} = {line.LineTotal}");

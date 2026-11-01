@@ -493,6 +493,10 @@ every file and hide the real changes in review. **Consequences**: readers need t
 
 ## 11. Known limitations
 
+* The terminal prices goods and money-order face values but does not calculate tax; the server
+  recalculates tax with its own rules when the sale syncs (demo: $9.85 at the counter, $10.84 incl.
+  tax recorded on SQL Server). The console labels amounts "before tax". A production terminal would
+  receive the tax rates in the branch snapshot and print the final amount on the receipt.
 * The terminal has no local sign-in; the clerk id comes from configuration. A production terminal
   would cache staff credentials (hashes) in the snapshot.
 * Snapshot pulls are deltas based on the audit columns (`CreatedAtUtc`/`ModifiedAtUtc` after the

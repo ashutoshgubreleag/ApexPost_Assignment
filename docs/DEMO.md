@@ -1,4 +1,37 @@
-# Week 3 demo script (about 10 minutes)
+# Week 3 demo
+
+## Recorded run (2026-11-01)
+
+This demo was run for real on the reference PC: the web app on SQL Server 2025 (`ApexPostDb`) and
+the counter terminal on Couchbase Lite, talking over HTTPS with the device key. The captured output
+is committed next to this file:
+
+* [`demo-terminal-output.txt`](demo-terminal-output.txt): the terminal session (scripted with `--run`)
+* [`demo-sql-evidence.txt`](demo-sql-evidence.txt): what SQL Server holds afterwards (read-only queries)
+
+| Step | Terminal (Couchbase Lite) | Server (SQL Server) |
+| --- | --- | --- |
+| First sync | `Sync OK ... pulled 32 product(s), 32 stock row(s)` | Catalogue and BR-001 stock served by `/api/sync/branch-snapshot` |
+| Go offline | `Network OFF. Sales keep working and queue in the outbox.` | nothing received |
+| Sell PKG-001 ×2, PKG-002 ×1 (Card) | `[Pending]` $9.85 before tax, saved to `pendingTransactions` | nothing received yet |
+| Money order $250 | `[Pending]` (allowed offline, below the $1,000 ID threshold) | |
+| Money order $1,500 | `Refused: ... cannot be sold while the counter is offline` | never sent |
+| Status | `Link: OFFLINE`, `Outbox: 2 pending` | |
+| Go online | `Sync OK: pushed 2 (accepted 2, warnings 0, rejected 0); pulled 0 product(s), 2 stock row(s)` | 2 `SyncInbox` rows `Accepted` → transactions **3005** and **3006**, `Source = OfflineTerminal`, `Status = Paid` |
+| Amounts | $9.85 + $250.00 before tax | 3005: $9.85 + $0.99 tax = **$10.84**, paid by Card; 3006: $5.00 fee + $250.00 pass-through = **$255.00**; money order `MO-001-261101-3567` `Issued` |
+| Stock | sold-unsynced back to 0 after the pull | `PKG-001` **44 → 42**, `PKG-002` **66 → 65** |
+| Conflicts | `warnings 0` | `SyncConflicts`: 0 (prices unchanged, stock sufficient) |
+
+What this proves: sales are written to the local outbox **before** any network call; the
+high-value money-order rule holds offline; the push goes through the same domain rules and one
+unit of work as a counter sale (tax and fee recalculated by the server, stock decremented,
+money order issued); only the changed stock rows come back in the delta pull. Conflict scenarios
+(price changed while offline, stock oversold, duplicate push) are shown by the tests listed in
+CONFLICTS.md and can be reproduced with the steps below.
+
+---
+
+## Demo script (about 10 minutes)
 
 Two windows side by side: the web app (left) and the counter terminal (right). SSMS or Azure Data
 Studio connected to `ApexPostDb` is useful for step 6. All data is fictional.

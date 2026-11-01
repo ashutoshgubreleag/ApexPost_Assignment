@@ -1,0 +1,88 @@
+# Recorded run, 2026-11-01: ApexPost.CounterTerminal against the web app on SQL Server 2025
+# Command: dotnet run --project .\ApexPost.CounterTerminal -- --run "status;catalog Packaging;stock;offline;sell PKG-001x2 PKG-002x1 pay=Card;mo 250 Ada Bo;mo 1500 Ada Bo;status;pending;online;status;today"
+# (Couchbase Lite start-up log lines removed; amounts shown by the terminal are before tax)
+
+ApexPost counter terminal TERM-BR001-01 (BR-001). Data: C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\terminal-data
+Sync OK: pushed 0 (accepted 0, warnings 0, rejected 0); pulled 32 product(s), 32 stock row(s).
+> status
+Device TERM-BR001-01 @ BR-001 counter 1
+  Link: online
+  Outbox: 0 pending
+  Last sync: 2026-11-01 09:19:53Z
+> catalog Packaging
+  PKG-008      Bubble wrap roll 3m                   $7.95
+  PKG-006      Large box (Size 5)                    $5.25
+  PKG-003      Large padded bag                      $4.95
+  PKG-005      Medium box (Size 3)                   $3.75
+  PKG-002      Medium padded bag                     $3.95
+  PKG-009      Packing tape 50m                      $4.50
+  PKG-011      Prepaid satchel 3kg                  $16.50
+  PKG-010      Prepaid satchel 500g                 $11.00
+  PKG-004      Small box (Size 1)                    $2.50
+  PKG-001      Small padded bag                      $2.95
+  PKG-007      Tube 1m                               $6.50
+> stock
+  OFF-001      server    23  sold-unsynced    0  available    23
+  OFF-002      server    65  sold-unsynced    0  available    65
+  OFF-003      server    50  sold-unsynced    0  available    50
+  OFF-004      server    60  sold-unsynced    0  available    60
+  OFF-005      server    52  sold-unsynced    0  available    52
+  OFF-006      server    25  sold-unsynced    0  available    25
+  OFF-007      server    16  sold-unsynced    0  available    16
+  OFF-008      server    25  sold-unsynced    0  available    25
+  OFF-009      server    16  sold-unsynced    0  available    16
+  OFF-010      server    29  sold-unsynced    0  available    29
+  OFF-011      server    38  sold-unsynced    0  available    38
+  OFF-012      server     1  sold-unsynced    0  available     1  LOW
+  PKG-001      server    44  sold-unsynced    0  available    44
+  PKG-002      server    66  sold-unsynced    0  available    66
+  PKG-003      server    66  sold-unsynced    0  available    66
+  PKG-004      server    58  sold-unsynced    0  available    58
+  PKG-005      server    78  sold-unsynced    0  available    78
+  PKG-006      server    21  sold-unsynced    0  available    21
+  PKG-007      server    78  sold-unsynced    0  available    78
+  PKG-008      server    78  sold-unsynced    0  available    78
+  PKG-009      server    67  sold-unsynced    0  available    67
+  PKG-010      server    42  sold-unsynced    0  available    42
+  PKG-011      server    70  sold-unsynced    0  available    70
+  STN-001      server    58  sold-unsynced    0  available    58
+  STN-002      server    33  sold-unsynced    0  available    33
+  STN-003      server    76  sold-unsynced    0  available    76
+  STN-004      server    58  sold-unsynced    0  available    58
+  STN-005      server    34  sold-unsynced    0  available    34
+  STN-006      server    43  sold-unsynced    0  available    43
+  STN-007      server    22  sold-unsynced    0  available    22
+  STN-008      server    29  sold-unsynced    0  available    29
+  STN-009      server    79  sold-unsynced    0  available    79
+> offline
+Network OFF. Sales keep working and queue in the outbox.
+Sync failed, sales kept in the outbox: Offline (network switched off at this terminal).
+> sell PKG-001x2 PKG-002x1 pay=Card
+Sale 6d72b291-de78-48d2-95bb-b433b775a77b  [Pending]  Card  total $9.85
+  2 x Small padded bag (PKG-001) @ $2.95 = $5.90
+  1 x Medium padded bag (PKG-002) @ $3.95 = $3.95
+> mo 250 Ada Bo
+Sale df84899c-82aa-4706-8b77-b7e1739593cb  [Pending]  Cash  total $250.00
+  Money order $250.00 from Ada to Bo
+> mo 1500 Ada Bo
+Refused: Money orders above $1000.00 cannot be sold while the counter is offline (identity verification needs the network).
+> status
+Device TERM-BR001-01 @ BR-001 counter 1
+  Link: OFFLINE (switched off)
+  Outbox: 2 pending
+  Last sync: 2026-11-01 09:19:53Z
+  Last error: Offline (network switched off at this terminal). (2026-11-01 09:19:53Z)
+> pending
+2 pending sale(s) older than 0 minute(s):
+  6d72b291-de78-48d2-95bb-b433b775a77b  2026-11-01 09:19:53Z       $9.85  attempts 0  
+  df84899c-82aa-4706-8b77-b7e1739593cb  2026-11-01 09:19:53Z     $250.00  attempts 0  
+> online
+Network ON. Syncing...
+Sync OK: pushed 2 (accepted 2, warnings 0, rejected 0); pulled 0 product(s), 2 stock row(s).
+> status
+Device TERM-BR001-01 @ BR-001 counter 1
+  Link: online
+  Outbox: 0 pending
+  Last sync: 2026-11-01 09:19:55Z
+> today
+Today: 2 sale(s), $259.85

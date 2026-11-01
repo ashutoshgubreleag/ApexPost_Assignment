@@ -43,14 +43,14 @@ public sealed class TransactionController(ITransactionService transactions, IBra
     }
 
     /// <summary>The basket screen: lines, totals, add-item/service forms, payment, void/refund.</summary>
-    public async Task<IActionResult> Details(int id, CancellationToken cancellationToken) =>
+    public async Task<IActionResult> Details([FromRoute] int id, CancellationToken cancellationToken) =>
         View(await transactions.GetDetailsAsync(id, Actor, cancellationToken));
 
     [Authorize(Policy = Policies.CanTransact)]
     [HttpPost]
     [RedirectOnInvalidModel(nameof(Details))]
     [Audited("Transaction.AddItem", "Sku", "Quantity")]
-    public async Task<IActionResult> AddItem(int id, AddItemViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> AddItem([FromRoute] int id, AddItemViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         await transactions.AddRetailItemAsync(id, new AddRetailItemCommand { Sku = model.Sku, Quantity = model.Quantity }, Actor, cancellationToken);
@@ -60,7 +60,7 @@ public sealed class TransactionController(ITransactionService transactions, IBra
     [Authorize(Policy = Policies.CanTransact)]
     [HttpPost]
     [Audited("Transaction.RemoveLine", "lineNumber")]
-    public async Task<IActionResult> RemoveLine(int id, int lineNumber, CancellationToken cancellationToken)
+    public async Task<IActionResult> RemoveLine([FromRoute] int id, int lineNumber, CancellationToken cancellationToken)
     {
         await transactions.RemoveLineAsync(id, lineNumber, Actor, cancellationToken);
         return RedirectToAction(nameof(Details), new { id });
@@ -70,7 +70,7 @@ public sealed class TransactionController(ITransactionService transactions, IBra
     [HttpPost]
     [RedirectOnInvalidModel(nameof(Details))]
     [Audited("Transaction.Pay", "PaymentMethod")]
-    public async Task<IActionResult> Pay(int id, PaymentViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Pay([FromRoute] int id, PaymentViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         var paid = await transactions.PayAsync(id, model.PaymentMethod, Actor, cancellationToken);
@@ -83,7 +83,7 @@ public sealed class TransactionController(ITransactionService transactions, IBra
     [HttpPost]
     [RedirectOnInvalidModel(nameof(Details))]
     [Audited("Transaction.Void", "Reason")]
-    public async Task<IActionResult> Void(int id, ReasonViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Void([FromRoute] int id, ReasonViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         await transactions.VoidAsync(id, new VoidOrRefundCommand { Reason = model.Reason }, Actor, cancellationToken);
@@ -95,7 +95,7 @@ public sealed class TransactionController(ITransactionService transactions, IBra
     [HttpPost]
     [RedirectOnInvalidModel(nameof(Details))]
     [Audited("Transaction.Refund", "Reason")]
-    public async Task<IActionResult> Refund(int id, ReasonViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Refund([FromRoute] int id, ReasonViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         await transactions.RefundAsync(id, new VoidOrRefundCommand { Reason = model.Reason }, Actor, cancellationToken);

@@ -486,9 +486,9 @@ every file and hide the real changes in review. **Consequences**: readers need t
 
 | Project | What it proves | Needs |
 | --- | --- | --- |
-| `ApexPost.Tests` (129) | Week 2 rules on fakes; the real terminal syncing with the real web app in memory (offline sale → reconnect → duplicate push); one commit per use case, none on failure; offline idempotency and C1/C2/C3; `/api/sync` auth, branch binding, 400/401/429 Problem Details; model snapshot matches migrations | nothing |
+| `ApexPost.Tests` (134) | Week 2 rules on fakes (the query fakes reject overlapping calls in one request, like EF Core); over-posting (extra form/JSON fields such as `Id`, `Status`, `Fee`, `BranchCode`, `PasswordHash` are ignored; route ids bind from the route only); the real terminal syncing with the real web app in memory (offline sale → reconnect → duplicate push); one commit per use case, none on failure; offline idempotency and C1/C2/C3; `/api/sync` auth, branch binding, 400/401/429 Problem Details; model snapshot matches migrations | nothing |
 | `ApexPost.CounterTerminal.Tests` (31) | Couchbase CRUD, SQL++ (incl. injection attempt), persistence across reopen, field-level merge, listener once, offline rules, sync worker with network failure, lost response, rejection, backoff | nothing (real Couchbase Lite in a temp folder) |
-| `ApexPost.IntegrationTests` (27) | Week 2 rule tests on SQL Server; migrations; aggregate round trip; rollback; rowversion conflict; parallel clerks; CHECK; masking; three procedures + error mapping; racing pushes; N+1 command count; `ToQueryString` | SQL Server / LocalDB (`APEXPOST_TEST_SQL`) |
+| `ApexPost.IntegrationTests` (29) | Week 2 rule tests on SQL Server; every query-service method once on seeded data; historical seeder (unique references, runs once); migrations; aggregate round trip; rollback; rowversion conflict; parallel clerks; CHECK; masking; three procedures + error mapping; racing pushes; N+1 command count; `ToQueryString` | SQL Server / LocalDB (`APEXPOST_TEST_SQL`) |
 
 ## 11. Known limitations
 

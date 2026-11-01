@@ -152,10 +152,10 @@ Problem Details (400/401/409/429). See DESIGN.md §6.
 
 ```powershell
 dotnet build .\ApexPost.slnx                    # zero warnings (TreatWarningsAsErrors)
-dotnet test  .\ApexPost.Tests                   # 129 unit, web and terminal-to-server tests, no database needed
+dotnet test  .\ApexPost.Tests                   # 134 unit, web, over-posting and terminal-to-server tests, no database needed
 dotnet test  .\ApexPost.CounterTerminal.Tests   # 31 tests on a real Couchbase Lite database
 $env:APEXPOST_TEST_SQL = "Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True"
-dotnet test  .\ApexPost.IntegrationTests        # 27 SQL Server tests (creates and drops ApexPostTest_* databases)
+dotnet test  .\ApexPost.IntegrationTests        # 29 SQL Server tests (creates and drops ApexPostTest_* databases)
 ```
 
 Or everything, including the performance run, with logs in `artifacts\verify`:

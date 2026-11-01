@@ -29,7 +29,7 @@ public sealed class StaffController(IStaffService staff) : ApexPostController
 
     [Authorize(Policy = Policies.StaffManagers)]
     [HttpGet]
-    public async Task<IActionResult> Edit(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Edit([FromRoute] int id, CancellationToken cancellationToken)
     {
         var member = await staff.GetByIdAsync(id, cancellationToken);
         return View(new StaffFormViewModel
@@ -46,7 +46,7 @@ public sealed class StaffController(IStaffService staff) : ApexPostController
     [Authorize(Policy = Policies.StaffManagers)]
     [HttpPost]
     [Audited("Staff.Update", "Id", "Role", "HomeBranchCode", "IsActive")]
-    public async Task<IActionResult> Edit(int id, StaffFormViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Edit([FromRoute] int id, StaffFormViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         model.Id = id;
@@ -58,7 +58,7 @@ public sealed class StaffController(IStaffService staff) : ApexPostController
     [Authorize(Policy = Policies.StaffManagers)]
     [HttpPost]
     [Audited("Staff.Deactivate")]
-    public async Task<IActionResult> Deactivate(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Deactivate([FromRoute] int id, CancellationToken cancellationToken)
     {
         await staff.DeactivateAsync(id, Actor, cancellationToken);
         Flash("Staff member deactivated. They can no longer sign in or process transactions.");

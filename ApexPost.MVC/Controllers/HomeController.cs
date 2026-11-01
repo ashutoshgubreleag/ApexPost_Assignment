@@ -37,7 +37,7 @@ public sealed class HomeController : ApexPostController
     [AllowAnonymous]
     [IgnoreAntiforgeryToken]
     [ActionName("StatusCode")]
-    public IActionResult StatusCodePage(int id)
+    public IActionResult StatusCodePage([FromRoute] int id)
     {
         var code = id is >= 400 and <= 599 ? id : 500;
         Response.StatusCode = code;

@@ -1,79 +1,62 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
 using ApexPost.Models.Exceptions;
 using ApexPost.Models.Validation;
 using ApexPost.Models.ValueObjects;
-using ApexPost.Repositories;
-using ApexPost.Repositories.Specifications;
+using ApexPost.Services.Abstractions;
 using ApexPost.Services.Common;
 
 namespace ApexPost.Services.Branch;
 
-public sealed class BranchService(IBaseEntityRepository<BranchEntity> branches) : IBranchService
+/// <summary>Branch maintenance. Reads use <see cref="IBranchQueries"/>; writes use the repository and one commit.</summary>
+public sealed class BranchService(IBranchRepository branches, IBranchQueries queries, IUnitOfWork unitOfWork) : IBranchService
 {
-    public async Task<IReadOnlyList<BranchEntity>> GetAllAsync(CancellationToken cancellationToken)
-    {
-        var all = await branches.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        return all.OrderBy(b => b.BranchCode.Value, StringComparer.Ordinal).ToList();
-    }
+    public Task<IReadOnlyList<BranchDto>> GetAllAsync(CancellationToken cancellationToken) => queries.ListAsync(cancellationToken);
 
-    public async Task<BranchEntity> GetByCodeAsync(BranchCode branchCode, CancellationToken cancellationToken)
-    {
-        var matches = await branches.FindAsync(ByCode(branchCode), cancellationToken).ConfigureAwait(false);
-        return matches.FirstOrDefault() ?? throw new EntityNotFoundException("Branch", branchCode);
-    }
+    public async Task<BranchDto> GetByCodeAsync(BranchCode branchCode, CancellationToken cancellationToken) =>
+        await queries.GetAsync(branchCode, cancellationToken).ConfigureAwait(false)
+        ?? throw new EntityNotFoundException("Branch", branchCode);
 
-    public async Task<BranchEntity> CreateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken)
+    public async Task<BranchDto> CreateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
         EnsureAdministrator(actor);
         ReflectionValidator.EnsureValid(command);
 
         var code = new BranchCode(command.BranchCode);
-        var existing = await branches.FindAsync(ByCode(code), cancellationToken).ConfigureAwait(false);
-        if (existing.Count > 0)
+        if (await branches.ExistsAsync(code, cancellationToken).ConfigureAwait(false))
         {
             throw new BusinessRuleViolationException("BRANCH_EXISTS", $"Branch {code} already exists.");
         }
 
-        var branch = new BranchEntity
-        {
-            BranchCode = code,
-            Name = command.Name,
-            Region = command.Region,
-            OpeningHours = command.OpeningHours,
-            Status = BranchStatus.Active,
-            Counters = Enumerable.Range(1, command.CounterCount)
-                .Select(n => new CounterTerminalEntity { Id = n, Name = $"Counter {n}", IsActive = true })
-                .ToList(),
-        };
-
-        return await branches.AddAsync(branch, cancellationToken).ConfigureAwait(false);
+        // Explicit mapping: command -> domain factory. Status always starts Active, whatever was posted.
+        var branch = Models.Domain.Branch.Create(code, command.Name, command.Region, command.OpeningHours, command.CounterCount);
+        branches.Add(branch);
+        await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return branch.ToDto();
     }
 
-    public async Task<BranchEntity> UpdateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken)
+    public async Task<BranchDto> UpdateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
         EnsureAdministrator(actor);
         ReflectionValidator.EnsureValid(command);
 
-        var branch = await GetByCodeAsync(new BranchCode(command.BranchCode), cancellationToken).ConfigureAwait(false);
-        branch.Name = command.Name;
-        branch.Region = command.Region;
-        branch.OpeningHours = command.OpeningHours;
+        var branch = await LoadAsync(new BranchCode(command.BranchCode), cancellationToken).ConfigureAwait(false);
+        branch.UpdateDetails(command.Name, command.Region, command.OpeningHours);
 
-        // Grow or shrink the counter list without renumbering existing terminals.
-        for (var n = branch.Counters.Count + 1; n <= command.CounterCount; n++)
+        // Grow the counter list without renumbering existing terminals.
+        while (branch.Counters.Count < command.CounterCount)
         {
-            branch.Counters.Add(new CounterTerminalEntity { Id = n, Name = $"Counter {n}", IsActive = true });
+            branch.AddCounter($"Counter {branch.Counters.Count + 1}");
         }
 
-        foreach (var counter in branch.Counters)
+        foreach (var counter in branch.Counters.Where(c => c.Number > command.CounterCount && c.IsActive))
         {
-            counter.IsActive = counter.Id <= command.CounterCount;
+            counter.Deactivate();
         }
 
-        await branches.UpdateAsync(branch, cancellationToken).ConfigureAwait(false);
-        return branch;
+        await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return branch.ToDto();
     }
 
     public async Task SetStatusAsync(BranchCode branchCode, BranchStatus status, StaffContext actor, CancellationToken cancellationToken)
@@ -84,21 +67,14 @@ public sealed class BranchService(IBaseEntityRepository<BranchEntity> branches) 
             throw new ForbiddenOperationException("Only an administrator or the branch's manager can open or close a branch.");
         }
 
-        var branch = await GetByCodeAsync(branchCode, cancellationToken).ConfigureAwait(false);
-        branch.Status = status;
-        await branches.UpdateAsync(branch, cancellationToken).ConfigureAwait(false);
+        var branch = await LoadAsync(branchCode, cancellationToken).ConfigureAwait(false);
+        branch.SetStatus(status);
+        await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<BranchEntity> EnsureOpenForTradingAsync(BranchCode branchCode, CancellationToken cancellationToken)
-    {
-        var branch = await GetByCodeAsync(branchCode, cancellationToken).ConfigureAwait(false);
-        return branch.Status == BranchStatus.Active
-            ? branch
-            : throw new BusinessRuleViolationException("BRANCH_CLOSED", $"Branch {branchCode} is closed and cannot accept transactions.");
-    }
-
-    private static Specification<BranchEntity> ByCode(BranchCode code) =>
-        Specification<BranchEntity>.Where(b => b.BranchCode == code, "branch code");
+    private async Task<Models.Domain.Branch> LoadAsync(BranchCode code, CancellationToken cancellationToken) =>
+        await branches.GetByCodeAsync(code, cancellationToken).ConfigureAwait(false)
+        ?? throw new EntityNotFoundException("Branch", code);
 
     private static void EnsureAdministrator(StaffContext actor)
     {

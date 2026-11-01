@@ -11,7 +11,8 @@
 <div class="page-head">
     <div>
         <h1>Transaction @tx.Id <span class="badge @(tx.Status switch { TransactionStatus.Paid => "ok", TransactionStatus.Open => "info", _ => "bad" })">@tx.Status</span></h1>
-        <p class="lead"><span class="mono">@tx.BranchCode</span> · counter @tx.CounterTerminalId · clerk @tx.ClerkStaffId · opened @tx.CreatedAt.ToString("dd MMM yyyy HH:mm") UTC
+        <p class="lead"><span class="mono">@tx.BranchCode</span> · counter @tx.CounterNumber · clerk @tx.ClerkStaffId · opened @tx.CreatedAt.ToString("dd MMM yyyy HH:mm") UTC
+            @if (tx.Source == TransactionSource.OfflineTerminal) { <text> · </text><span class="badge info">offline sale</span> }
             @if (tx.PaymentMethod is { } pm) { <text> · paid by @pm</text> }</p>
     </div>
     <a class="btn secondary" asp-action="Index">All transactions</a>
@@ -33,16 +34,16 @@
             <table>
                 <thead><tr><th>#</th><th>Line</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Net</th><th class="num">Tax</th><th></th></tr></thead>
                 <tbody>
-                    @foreach (var line in tx.LineItems)
+                    @foreach (var line in Model.Lines)
                     {
                         <tr>
-                            <td>@line.Id</td>
+                            <td>@line.LineNumber</td>
                             <td>
                                 <span class="badge @(line.LineType == TransactionLineType.RetailItem ? "" : "info")">@line.LineType</span>
                                 @line.Description
                                 <div class="help mono">@line.ItemCode · @line.TaxCategory tax
                                     @if (line.PassThroughAmount.Amount > 0) { <text> · face value @line.PassThroughAmount</text> }
-                                    @if (line.LineType == TransactionLineType.Shipping && line.ReferenceId is int sid) { <text> · </text><a asp-controller="Shipping" asp-action="Label" asp-route-id="@sid">label</a> }
+                                    @if (Model.ShipmentFor(line) is { } shipment) { <text> · </text><a asp-controller="Shipping" asp-action="Label" asp-route-id="@shipment.Id">label</a> }
                                 </div>
                             </td>
                             <td class="num">@line.Quantity</td>
@@ -53,14 +54,14 @@
                                 @if (editable)
                                 {
                                     <form class="inline" asp-action="RemoveLine" asp-route-id="@tx.Id" method="post">
-                                        <input type="hidden" name="lineNumber" value="@line.Id" />
+                                        <input type="hidden" name="lineNumber" value="@line.LineNumber" />
                                         <button class="btn small secondary" type="submit">Remove</button>
                                     </form>
                                 }
                             </td>
                         </tr>
                     }
-                    @if (tx.LineItems.Count == 0)
+                    @if (Model.Lines.Count == 0)
                     {
                         <tr class="muted"><td colspan="7">The basket is empty.</td></tr>
                     }
@@ -68,8 +69,8 @@
             </table>
         </div>
         <table class="totals mt">
-            <tr><td>Retail (ex tax)</td><td class="num">@tx.RetailNet</td></tr>
-            <tr><td>Services (ex tax)</td><td class="num">@tx.ServicesNet</td></tr>
+            <tr><td>Retail (ex tax)</td><td class="num">@Model.RetailNet</td></tr>
+            <tr><td>Services (ex tax)</td><td class="num">@Model.ServicesNet</td></tr>
             <tr><td>Tax</td><td class="num">@tx.TaxAmount</td></tr>
             <tr><td>Money order face value</td><td class="num">@tx.PassThroughAmount</td></tr>
             <tr class="grand"><td>Total to pay</td><td class="num">@tx.TotalAmount</td></tr>

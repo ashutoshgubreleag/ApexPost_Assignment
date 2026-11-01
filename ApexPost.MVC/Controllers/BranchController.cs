@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.ValueObjects;
 using ApexPost.MVC.Models;
 using ApexPost.MVC.Security;
@@ -15,7 +16,11 @@ public sealed class BranchController(IBranchService branches, IDashboardService 
     public async Task<IActionResult> Index(CancellationToken cancellationToken) =>
         View(await branches.GetAllAsync(cancellationToken));
 
-    /// <summary>Branch dashboard: sales, stock and alerts loaded in parallel (Task.WhenAll in the service).</summary>
+    /// <summary>
+    /// Branch dashboard. The two reads run one after the other, not with Task.WhenAll: both use this
+    /// request's scoped DbContext, which allows only one operation at a time (the test fakes enforce
+    /// the same rule through ScopeOperationGuard).
+    /// </summary>
     [Authorize(Policy = Policies.SameBranchOnly)]
     public async Task<IActionResult> Dashboard(string branchCode, CancellationToken cancellationToken)
     {
@@ -24,13 +29,12 @@ public sealed class BranchController(IBranchService branches, IDashboardService 
             return BadRequest("Invalid branch code.");
         }
 
-        var dashboardTask = dashboards.BuildAsync(code.Value, Actor, cancellationToken);
-        var branchesTask = branches.GetAllAsync(cancellationToken);
-        await Task.WhenAll(dashboardTask, branchesTask);
+        var dashboard = await dashboards.BuildAsync(code.Value, Actor, cancellationToken);
+        var allBranches = await branches.GetAllAsync(cancellationToken);
 
         return View(new DashboardViewModel(
-            await dashboardTask,
-            await branchesTask,
+            dashboard,
+            allBranches,
             User.CanSeeAllBranches,
             User.StaffRole is StaffRole.CounterClerk or StaffRole.BranchManager));
     }

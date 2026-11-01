@@ -1,11 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Cross-cutting web infrastructure: middleware, MVC filters, audit store, exception handling. -->
+  <!-- Cross-cutting web infrastructure: middleware, MVC filters and exception handling. Depends on
+       the application layer for the audit port (IAuditStore) and domain exceptions only. -->
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ApexPost.Models\ApexPost.Models.csproj" />
+    <ProjectReference Include="..\ApexPost.Services\ApexPost.Services.csproj" />
+    <ProjectReference Include="..\ApexPost.Contracts\ApexPost.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

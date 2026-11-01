@@ -1,4 +1,5 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.ValueObjects;
 using ApexPost.Services.Common;
 
@@ -54,8 +55,8 @@ public sealed record MoneyOrderAuditReport(
     DateOnly From,
     DateOnly To,
     IReadOnlyList<MoneyOrderAuditRow> Rows,
-    IReadOnlyList<MoneyOrderEntity> MoneyOrders,
-    IReadOnlyList<IdentityVerificationEntity> Verifications);
+    IReadOnlyList<MoneyOrderDto> MoneyOrders,
+    IReadOnlyList<VerificationDto> Verifications);
 
 public interface IReportService
 {
@@ -69,4 +70,7 @@ public interface IReportService
     Task<ShippingVolumeReport> GetShippingVolumeAsync(DateOnly from, DateOnly to, BranchCode? branch, StaffContext actor, CancellationToken cancellationToken);
 
     Task<MoneyOrderAuditReport> GetMoneyOrderAuditAsync(DateOnly from, DateOnly to, BranchCode? branch, StaffContext actor, CancellationToken cancellationToken);
+
+    /// <summary>Offline-sync conflicts (price variance, stock shortfall) waiting for review. Not for clerks.</summary>
+    Task<IReadOnlyList<SyncConflictDto>> GetSyncConflictsAsync(BranchCode? branch, StaffContext actor, CancellationToken cancellationToken);
 }

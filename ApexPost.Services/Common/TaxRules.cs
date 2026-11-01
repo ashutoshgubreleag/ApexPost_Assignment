@@ -1,4 +1,4 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
 using ApexPost.Models.ValueObjects;
 
 namespace ApexPost.Services.Common;

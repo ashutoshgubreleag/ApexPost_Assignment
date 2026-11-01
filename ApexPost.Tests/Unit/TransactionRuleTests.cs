@@ -1,7 +1,6 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
 using ApexPost.Models.Exceptions;
 using ApexPost.Models.ValueObjects;
-using ApexPost.Repositories;
 using ApexPost.Services.Branch;
 using ApexPost.Services.Common;
 using ApexPost.Services.Events;
@@ -187,43 +186,5 @@ public sealed class TransactionRuleTests
         await service.PayAsync(tx.Id, PaymentMethod.Cash, clerk, CancellationToken.None);
 
         Assert.Equal(tx.Id, Assert.Single(completed).TransactionId);
-    }
-
-    [Fact]
-    public async Task Repository_AssignsUniqueIds_UnderConcurrentWrites()
-    {
-        await using var harness = await ServiceHarness.CreateAsync();
-        var repository = harness.Get<IBaseEntityRepository<NotificationEntity>>();
-
-        var added = await Task.WhenAll(Enumerable.Range(0, 40).Select(i =>
-            repository.AddAsync(new NotificationEntity { Type = NotificationType.LowStock, Message = $"n{i}", CreatedAt = DateTimeOffset.UtcNow })));
-
-        Assert.Equal(40, added.Select(a => a.Id).Distinct().Count());
-        var reloaded = new ApexPost.Repositories.BaseJsonRepository<NotificationEntity>(harness.Get<ApexPost.Repositories.Json.JsonStorageSettings>());
-        Assert.Equal((await repository.GetAllAsync()).Count, (await reloaded.GetAllAsync()).Count); // file on disk is complete and valid
-    }
-
-    [Fact]
-    public async Task Repository_ReturnsCopies_SoCallersCannotCorruptTheCache()
-    {
-        await using var harness = await ServiceHarness.CreateAsync();
-        var repository = harness.Get<IBaseEntityRepository<ProductEntity>>();
-        var first = await repository.GetByIdAsync(1);
-        first!.Name = "Tampered";
-
-        var again = await repository.GetByIdAsync(1);
-
-        Assert.NotEqual("Tampered", again!.Name);
-    }
-
-    [Fact]
-    public async Task Cancellation_StopsRepositoryIo()
-    {
-        await using var harness = await ServiceHarness.CreateAsync();
-        using var cts = new CancellationTokenSource();
-        await cts.CancelAsync();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            harness.Get<IBaseEntityRepository<NotificationEntity>>().AddAsync(new NotificationEntity { Message = "x" }, cts.Token));
     }
 }

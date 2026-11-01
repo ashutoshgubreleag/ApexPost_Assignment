@@ -111,10 +111,8 @@ public sealed class IntegrationEndpointTests : IClassFixture<ApexPostWebApplicat
 
     private async Task<string> FirstLodgedTrackingNumberAsync()
     {
-        _ = _factory.Server; // ensure the host started and seeded the data folder
-        var json = await File.ReadAllTextAsync(Path.Combine(_factory.DataDirectory, "ShippingOrderEntity.json"));
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        return doc.RootElement.EnumerateArray().First(e => e.GetProperty("Status").GetString() == "Lodged").GetProperty("TrackingNumber").GetString()!;
+        _ = _factory.Server; // ensure the host started
+        return await TestData.LodgedShipmentAsync(_factory.Store);
     }
 }
 

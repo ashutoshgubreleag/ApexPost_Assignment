@@ -47,3 +47,16 @@ public sealed class CommandValidationException : DomainException
 
     public IReadOnlyList<ValidationError> Errors { get; }
 }
+
+/// <summary>
+/// Another user changed the same data first (optimistic concurrency, e.g. two clerks selling the
+/// last unit). Raised by the persistence layer instead of DbUpdateConcurrencyException so the
+/// application never depends on EF Core; mapped to HTTP 409 or a view error.
+/// </summary>
+public sealed class ConcurrencyConflictException : DomainException
+{
+    public ConcurrencyConflictException(string message, Exception? innerException = null)
+        : base(message) => Cause = innerException;
+
+    public Exception? Cause { get; }
+}

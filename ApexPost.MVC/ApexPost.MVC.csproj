@@ -1,12 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <!-- Presentation layer: composition root, pipeline, thin controllers and Razor views. -->
+  <!-- Web (the brief's "Web"): composition root, pipeline, thin controllers, Razor views and the /api/sync endpoints. -->
   <PropertyGroup>
-    <!-- dotnet user-secrets set "Integration:Partners:swiftcourier" "<key>" stores the key outside the repo. -->
+    <!-- Secrets live outside the repo:
+         dotnet user-secrets set "ConnectionStrings:ApexPostDb" "Server=.;Database=ApexPostDb;Trusted_Connection=True;TrustServerCertificate=True"
+         dotnet user-secrets set "Integration:Partners:swiftcourier" "<key>"
+         dotnet user-secrets set "Sync:Devices:TERM-BR001-01:Key" "<key>" -->
     <UserSecretsId>apexpost-counter-platform-5d1f0c2e</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ApexPost.Services\ApexPost.Services.csproj" />
+    <ProjectReference Include="..\ApexPost.Repositories\ApexPost.Repositories.csproj" />
+    <ProjectReference Include="..\ApexPost.Contracts\ApexPost.Contracts.csproj" />
     <ProjectReference Include="..\ApexPost.Utilities\ApexPost.Utilities.csproj" />
   </ItemGroup>
 

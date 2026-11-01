@@ -1,7 +1,7 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.Exceptions;
 using ApexPost.Models.ValueObjects;
-using ApexPost.Repositories;
 using ApexPost.Services.Events;
 using ApexPost.Services.Inventory;
 using ApexPost.Services.MoneyOrders;
@@ -53,11 +53,13 @@ public sealed class StockRuleTests
     [Fact]
     public void StockEntity_RefusesNegativeQuantity()
     {
-        var row = new BranchStockEntity { BranchCode = new BranchCode("BR-001"), Sku = new Sku("PKG-001"), QuantityOnHand = 1 };
+        var row = BranchStock.Create(new BranchCode("BR-001"), new Sku("PKG-001"), 1, 5, DateTimeOffset.UtcNow);
 
-        var ex = Assert.Throws<BusinessRuleViolationException>(() => row.QuantityOnHand = -1);
+        var ex = Assert.Throws<BusinessRuleViolationException>(() => row.Remove(2, DateTimeOffset.UtcNow));
 
-        Assert.Equal("STOCK_NEGATIVE", ex.RuleCode);
+        Assert.Equal("STOCK_INSUFFICIENT", ex.RuleCode);
+        Assert.Equal(1, row.QuantityOnHand);
+        Assert.Equal("STOCK_NEGATIVE", Assert.Throws<BusinessRuleViolationException>(() => BranchStock.Create(new BranchCode("BR-001"), new Sku("PKG-001"), -1, 5, DateTimeOffset.UtcNow)).RuleCode);
     }
 
     [Fact]
@@ -149,7 +151,7 @@ public sealed class MoneyOrderIdentityRuleTests
         var paid = await service.PayAsync(tx.Id, PaymentMethod.Card, clerk, CancellationToken.None);
 
         Assert.Equal(TransactionStatus.Paid, paid.Status);
-        var issued = await harness.Get<IBaseEntityRepository<MoneyOrderEntity>>().GetByIdAsync(order.Id);
+        var issued = await harness.Scoped<IMoneyOrderRepository>().GetByIdAsync(order.Id, CancellationToken.None);
         Assert.Equal(MoneyOrderStatus.Issued, issued!.Status);
         Assert.Equal(check.Id, issued.IdentityVerificationId);
     }
@@ -200,8 +202,8 @@ public sealed class MoneyOrderIdentityRuleTests
         var check = await service.AddIdentityVerificationAsync(tx.Id, Verification(VerificationResult.Passed, "PA 9876 5432"), clerk, CancellationToken.None);
 
         Assert.Equal("****5432", check.MaskedDocumentNumber.Value);
-        var files = Directory.GetFiles(harness.DataDirectory).Select(File.ReadAllText);
-        Assert.DoesNotContain(files, content => content.Contains("98765432", StringComparison.Ordinal) || content.Contains("PA 9876", StringComparison.Ordinal));
+        Assert.False(await harness.StorageContainsAsync("98765432"));
+        Assert.False(await harness.StorageContainsAsync("PA 9876"));
     }
 
     private static IdentityVerificationCommand Verification(VerificationResult result, string number = "N1234567") => new()
@@ -269,9 +271,9 @@ public sealed class ParcelWeightLimitTests
 
 public sealed class PricingTests
 {
-    private static readonly ShippingZoneEntity Metro = new() { ZoneCode = "Z01", Name = "Metro", LetterBaseRate = new Money(1.20m), ParcelBaseRate = new Money(8.95m), PerKgRate = new Money(1.10m) };
-    private static readonly ShippingZoneEntity Remote = new() { ZoneCode = "Z05", Name = "Remote", IsRemote = true, LetterBaseRate = new Money(1.40m), ParcelBaseRate = new Money(16.95m), PerKgRate = new Money(3.20m) };
-    private static readonly ShippingZoneEntity Europe = new() { ZoneCode = "Z09", Name = "Europe", IsInternational = true, LetterBaseRate = new Money(4.20m), ParcelBaseRate = new Money(34.95m), PerKgRate = new Money(9.40m) };
+    private static readonly ZoneDto Metro = new("Z01", "Metro", IsInternational: false, IsRemote: false, LetterBaseRate: new Money(1.20m), ParcelBaseRate: new Money(8.95m), PerKgRate: new Money(1.10m));
+    private static readonly ZoneDto Remote = new("Z05", "Remote", IsInternational: false, IsRemote: true, LetterBaseRate: new Money(1.40m), ParcelBaseRate: new Money(16.95m), PerKgRate: new Money(3.20m));
+    private static readonly ZoneDto Europe = new("Z09", "Europe", IsInternational: true, IsRemote: false, LetterBaseRate: new Money(4.20m), ParcelBaseRate: new Money(34.95m), PerKgRate: new Money(9.40m));
 
     private readonly DefaultShippingPricingStrategy _strategy = new();
 
@@ -351,13 +353,13 @@ public sealed class PricingTests
         var t = details.Transaction;
 
         Assert.Equal(new Money(5.00m), order.Fee);                    // minimum fee
-        Assert.Equal(new Money(12.85m), t.RetailNet);                 // 9.90 + 2.95
-        Assert.Equal(new Money(5.00m), t.ServicesNet);
+        Assert.Equal(new Money(12.85m), details.RetailNet);                 // 9.90 + 2.95
+        Assert.Equal(new Money(5.00m), details.ServicesNet);
         Assert.Equal(new Money(0.30m), t.TaxAmount);                  // only the 2.95 line is taxed
         Assert.Equal(new Money(200m), t.PassThroughAmount);
         Assert.Equal(new Money(218.15m), t.TotalAmount);
     }
 
-    private static ShippingPricingContext Context(ShippingZoneEntity zone, ShippingType type, ShippingServiceLevel level, decimal kg, Dimensions dims, decimal fuel) =>
+    private static ShippingPricingContext Context(ZoneDto zone, ShippingType type, ShippingServiceLevel level, decimal kg, Dimensions dims, decimal fuel) =>
         new(type, level, zone, new Weight(kg), dims, fuel);
 }

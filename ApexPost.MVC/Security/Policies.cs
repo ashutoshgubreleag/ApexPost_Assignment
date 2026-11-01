@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 
 namespace ApexPost.MVC.Security;
 

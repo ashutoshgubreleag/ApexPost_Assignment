@@ -1,15 +1,17 @@
 using System.Diagnostics;
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.Exceptions;
 using ApexPost.Models.Validation;
 using ApexPost.Models.ValueObjects;
-using ApexPost.Repositories.Specifications;
+using ApexPost.Models.Specifications;
 using ApexPost.Services.Caching;
 using ApexPost.Services.Common;
 using ApexPost.Services.Courier;
 using ApexPost.Services.Shipping;
 using ApexPost.Tests.Support;
 using ApexPost.Utilities.Audit;
+using ApexPost.Tests.Support.Fakes;
 using Xunit.Abstractions;
 
 namespace ApexPost.Tests.Unit;
@@ -117,9 +119,11 @@ public sealed class SpecificationTests
     [Fact]
     public void Composes()
     {
-        var paid = Specification<TransactionEntity>.Where(t => t.Status == TransactionStatus.Paid);
-        var atBr1 = Specification<TransactionEntity>.Where(t => t.BranchCode == new BranchCode("BR-001"));
-        var tx = new TransactionEntity { Status = TransactionStatus.Paid, BranchCode = new BranchCode("BR-002") };
+        var paid = Specification<CounterTransaction>.Where(t => t.Status == TransactionStatus.Paid);
+        var atBr1 = Specification<CounterTransaction>.Where(t => t.BranchCode == new BranchCode("BR-001"));
+        var tx = CounterTransaction.Open(new BranchCode("BR-002"), 1, 10, DateTimeOffset.UtcNow);
+        tx.AddServiceLine(TransactionLineType.IdentityVerification, "IDV-1", "Identity check", new Money(2.50m), TaxCategory.Standard, new Money(0.25m), Money.Zero);
+        tx.Pay(PaymentMethod.Cash, DateTimeOffset.UtcNow);
 
         Assert.False((paid & atBr1).IsSatisfiedBy(tx));
         Assert.True((paid | atBr1).IsSatisfiedBy(tx));
@@ -155,7 +159,7 @@ public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
             ["Courier:RateLookupLatencyMs"] = "30",
         });
         var courier = (SimulatedCourierRateService)harness.Get<ICourierRateService>();
-        var zone = new ShippingZoneEntity { ZoneCode = "Z01" };
+        var zone = new ZoneDto("Z01", "Metro", false, false, new Money(1.20m), new Money(8.95m), new Money(1.10m));
 
         await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => courier.GetFuelSurchargeRateAsync(zone, CancellationToken.None)));
 
@@ -165,8 +169,8 @@ public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
     [Fact]
     public async Task CourierTracking_TimeoutIsAFailure_ButCallerCancellationIsNot()
     {
-        await using var harness = await ServiceHarness.CreateAsync(new Dictionary<string, string?> { ["Courier:TrackingTimeoutMs"] = "100" });
-        var tracking = harness.Get<ICourierTrackingService>();
+        await using var harness = await ServiceHarness.CreateAsync(new Dictionary<string, string?> { ["Courier:TrackingTimeoutMs"] = "400" });
+        var tracking = harness.Scoped<ICourierTrackingService>();
 
         // Our timeout: the caller is still waiting, so return a failure result.
         var slow = await tracking.TrackAsync("APX261020999", CancellationToken.None);
@@ -182,18 +186,18 @@ public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
     {
         await using var harness = await ServiceHarness.CreateAsync();
         var cache = harness.Get<IReferenceDataCache>();
-        var repository = harness.Get<ApexPost.Repositories.IBaseEntityRepository<ProductEntity>>();
+        var repository = harness.Scoped<ICatalogQueries>();
 
         await cache.GetProductsAsync(CancellationToken.None); // warm
         var hit = cache.GetProductsAsync(CancellationToken.None);
         Assert.True(hit.IsCompletedSuccessfully); // no Task allocated, no await needed
 
         const int iterations = 2000;
-        await repository.GetAllAsync();
+        await repository.ListProductsAsync(CancellationToken.None);
         var sw = Stopwatch.StartNew();
         for (var i = 0; i < iterations; i++)
         {
-            var all = await repository.GetAllAsync();
+            var all = await repository.ListProductsAsync(CancellationToken.None);
             _ = all.First(p => p.Sku == new Sku("OFF-011"));
         }
 
@@ -226,13 +230,11 @@ public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
     [Fact]
     public async Task AuditStore_IsAppendOnly_UnderConcurrentWrites()
     {
-        var path = Path.Combine(Path.GetTempPath(), "apexpost-tests", Guid.NewGuid().ToString("N"), "audit.jsonl");
-        using var store = new JsonAuditStore(path);
+        var store = new InMemoryAuditStore();
 
         await Task.WhenAll(Enumerable.Range(0, 50).Select(i => store.AppendAsync(new AuditEntry { Action = $"Test.{i}", TimestampUtc = DateTimeOffset.UtcNow }, CancellationToken.None)));
 
-        var lines = await File.ReadAllLinesAsync(path);
-        Assert.Equal(50, lines.Length);
+        Assert.Equal(50, store.Entries.Count);
         Assert.Equal(50, (await store.ReadRecentAsync(100, CancellationToken.None)).Select(e => e.Action).Distinct().Count());
     }
 }

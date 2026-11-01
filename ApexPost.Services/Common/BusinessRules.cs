@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Options;
-using ApexPost.Database.Models;
 using ApexPost.Models.ValueObjects;
 
 namespace ApexPost.Services.Common;
@@ -22,8 +21,17 @@ public sealed class BusinessRules
 
     public required Money IdentityVerificationFee { get; init; }
 
-    /// <summary>Low-stock rule: (stock row, report threshold) → is it low?</summary>
-    public required Func<BranchStockEntity, int, bool> IsLowStock { get; init; }
+    /// <summary>Low-stock rule: (quantity on hand, item reorder threshold, report threshold) → is it low?</summary>
+    public required Func<int, int, int, bool> IsLowStock { get; init; }
+
+    /// <summary>Money orders at or above this amount are "high value" (notification, audit report).</summary>
+    public required Money HighValueMoneyOrderAmount { get; init; }
+
+    /// <summary>How many times a use case is retried after an optimistic concurrency conflict.</summary>
+    public required int ConcurrencyRetryAttempts { get; init; }
+
+    /// <summary>Offline sale price differing from the server price by more than this fraction is flagged.</summary>
+    public required decimal OfflinePriceVarianceTolerance { get; init; }
 
     public required int DefaultLowStockThreshold { get; init; }
 
@@ -41,7 +49,10 @@ public sealed class BusinessRules
             MoneyOrderFee = amount => Money.Max(minimumFee, amount.ApplyRate(options.MoneyOrderFeeRate)),
             MaximumMoneyOrderAmount = new Money(options.MaximumMoneyOrderAmount),
             IdentityVerificationFee = new Money(options.IdentityVerificationFee),
-            IsLowStock = (stock, threshold) => stock.QuantityOnHand <= Math.Max(stock.ReorderThreshold, threshold),
+            IsLowStock = (quantity, reorderThreshold, threshold) => quantity <= Math.Max(reorderThreshold, threshold),
+            HighValueMoneyOrderAmount = highValue,
+            ConcurrencyRetryAttempts = Math.Clamp(options.ConcurrencyRetryAttempts, 1, 100),
+            OfflinePriceVarianceTolerance = options.OfflinePriceVarianceTolerance,
             DefaultLowStockThreshold = options.LowStockThreshold,
         };
     }

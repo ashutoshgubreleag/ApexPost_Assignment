@@ -33,6 +33,7 @@ app.UseRouting();                                        // 9. endpoint selected
 app.UseCors();                                           // 10. partner widget origin only; answers preflights
 app.UseMiddleware<IpRestrictionMiddleware>();            // 11. admin/integration allowlist, 403
 app.UseMiddleware<ApiKeyValidationMiddleware>();         // 12. X-Api-Key on [ApiKeyRequired] endpoints, 401/500
+app.UseMiddleware<DeviceAuthenticationMiddleware>();     // 12b. X-Device-Id/X-Device-Key on [DeviceAuthenticated] (/api/sync), 401
 app.UseRateLimiter();                                    // 13. login brute force + per-partner budget, 429
 app.UseAuthentication();                                 // 14. cookie → ClaimsPrincipal
 app.UseAuthorization();                                  // 15. policies (fallback: authenticated)

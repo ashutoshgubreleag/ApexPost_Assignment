@@ -36,12 +36,12 @@ public sealed class ShippingController(IShippingService shipping, ITransactionSe
 
     [Authorize(Policy = Policies.CanTransact)]
     [HttpGet]
-    public IActionResult Add(int id) => View(new ShipmentFormViewModel { TransactionId = id });
+    public IActionResult Add([FromRoute] int id) => View(new ShipmentFormViewModel { TransactionId = id });
 
     [Authorize(Policy = Policies.CanTransact)]
     [HttpPost]
     [Audited("Transaction.AddShipment", "ShippingType", "ServiceLevel", "ZoneCode", "WeightKg")]
-    public async Task<IActionResult> Add(int id, ShipmentFormViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Add([FromRoute] int id, ShipmentFormViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         var command = new AddShipmentCommand(
@@ -70,7 +70,7 @@ public sealed class ShippingController(IShippingService shipping, ITransactionSe
     }
 
     /// <summary>Shipping label preview for a shipment.</summary>
-    public async Task<IActionResult> Label(int id, CancellationToken cancellationToken) =>
+    public async Task<IActionResult> Label([FromRoute] int id, CancellationToken cancellationToken) =>
         View(await shipping.GetShipmentAsync(id, Actor, cancellationToken));
 
     private static ShippingQuoteCommand ToCommand(QuoteFormViewModel model) => new()

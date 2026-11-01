@@ -1,0 +1,35 @@
+@model IReadOnlyList<SyncConflictDto>
+@{
+    ViewData["Title"] = "Offline sync conflicts";
+}
+<div class="page-head">
+    <div>
+        <h1>Offline sync conflicts</h1>
+        <p class="lead">Sales captured on an offline counter terminal are always accepted (the customer has paid and left). These are the ones that need a person to review them. Policies: see CONFLICTS.md.</p>
+    </div>
+    <a class="btn secondary" asp-action="SyncConflicts" asp-route-format="json">JSON</a>
+</div>
+<div class="table-wrap card">
+    <table>
+        <thead><tr><th>Raised (UTC)</th><th>Branch</th><th>Device</th><th>Type</th><th>Item</th><th>Details</th><th>Sale</th><th>Status</th></tr></thead>
+        <tbody>
+            @foreach (var c in Model)
+            {
+                <tr>
+                    <td>@c.RaisedAt.ToString("dd MMM HH:mm")</td>
+                    <td class="mono">@c.BranchCode</td>
+                    <td class="mono">@c.DeviceId</td>
+                    <td><span class="badge @(c.Type == SyncConflictType.StockShortfall ? "bad" : "warn")">@c.Type</span></td>
+                    <td class="mono">@c.ItemCode</td>
+                    <td>@c.Details</td>
+                    <td>@if (c.ServerTransactionId is int id) { <a asp-controller="Transaction" asp-action="Details" asp-route-id="@id">@id</a> }</td>
+                    <td>@c.Status</td>
+                </tr>
+            }
+            @if (Model.Count == 0)
+            {
+                <tr class="muted"><td colspan="8">No conflicts. Every offline sale matched the server's prices and stock.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>

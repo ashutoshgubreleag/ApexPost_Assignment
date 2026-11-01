@@ -1,4 +1,5 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.Validation;
 using ApexPost.Models.ValueObjects;
 
@@ -39,20 +40,5 @@ public interface IMoneyOrderService
 {
     Money CalculateFee(Money amount);
 
-    Task<MoneyOrderEntity> CreatePendingAsync(int transactionId, BranchCode branch, MoneyOrderCommand command, CancellationToken cancellationToken);
-
-    Task<IdentityVerificationEntity> RecordVerificationAsync(int transactionId, BranchCode branch, int staffId, IdentityVerificationCommand command, CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<IdentityVerificationEntity>> GetVerificationsForTransactionAsync(int transactionId, CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<MoneyOrderEntity>> GetForTransactionAsync(int transactionId, CancellationToken cancellationToken);
-
-    /// <summary>Marks the transaction's money orders as issued and raises MoneyOrderIssued events.</summary>
-    Task IssueAsync(int transactionId, int? identityVerificationId, CancellationToken cancellationToken);
-
-    Task CancelAsync(int transactionId, CancellationToken cancellationToken);
-
-    Task CancelByIdAsync(int moneyOrderId, CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<MoneyOrderEntity>> GetForBranchAsync(BranchCode? branch, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MoneyOrderDto>> GetForBranchAsync(BranchCode? branch, CancellationToken cancellationToken);
 }

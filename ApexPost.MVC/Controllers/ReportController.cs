@@ -16,6 +16,18 @@ public sealed class ReportController(IReportService reports) : ApexPostControlle
     public IActionResult Index() => View();
 
     [Authorize(Policy = Policies.SameBranchOnly)]
+    public async Task<IActionResult> SyncConflicts(string? branch, string? format, CancellationToken cancellationToken)
+    {
+        if (!TryParseBranch(branch, out var code))
+        {
+            return BadRequest("Invalid branch code.");
+        }
+
+        var conflicts = await reports.GetSyncConflictsAsync(code, Actor, cancellationToken);
+        return IsJson(format) ? Json(conflicts) : View(conflicts);
+    }
+
+    [Authorize(Policy = Policies.SameBranchOnly)]
     public async Task<IActionResult> DailySales(string? date, string? branch, string? format, CancellationToken cancellationToken)
     {
         if (!TryParseBranch(branch, out var code))

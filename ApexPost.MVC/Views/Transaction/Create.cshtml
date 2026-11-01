@@ -12,7 +12,7 @@
             <select asp-for="CounterTerminalId">
                 @foreach (var c in Model.Counters)
                 {
-                    <option value="@c.Id">@c.Name</option>
+                    <option value="@c.Number">@c.Name</option>
                 }
             </select>
         </div>

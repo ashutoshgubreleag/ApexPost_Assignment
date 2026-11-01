@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ApexPost.Database.Models;
-using ApexPost.Repositories;
-using ApexPost.Repositories.Specifications;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Services.Common;
 
 namespace ApexPost.Services.Courier;
@@ -10,7 +9,7 @@ namespace ApexPost.Services.Courier;
 /// <summary>Simulated courier partner API for live fuel surcharge rates.</summary>
 public interface ICourierRateService
 {
-    Task<decimal> GetFuelSurchargeRateAsync(ShippingZoneEntity zone, CancellationToken cancellationToken);
+    Task<decimal> GetFuelSurchargeRateAsync(ZoneDto zone, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -34,7 +33,7 @@ public sealed class SimulatedCourierRateService : ICourierRateService, IDisposab
     /// <summary>Highest number of simultaneous calls observed (lets tests prove the bound holds).</summary>
     public int PeakConcurrency => Volatile.Read(ref _peakInFlight);
 
-    public async Task<decimal> GetFuelSurchargeRateAsync(ShippingZoneEntity zone, CancellationToken cancellationToken)
+    public async Task<decimal> GetFuelSurchargeRateAsync(ZoneDto zone, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(zone);
         await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -99,7 +98,7 @@ public interface ICourierTrackingService
 /// tells them apart.
 /// </summary>
 public sealed partial class SimulatedCourierTrackingService(
-    IBaseEntityRepository<ShippingOrderEntity> shipments,
+    ITransactionQueries shipments,
     IOptions<CourierOptions> options,
     TimeProvider clock,
     ILogger<SimulatedCourierTrackingService> logger) : ICourierTrackingService
@@ -118,11 +117,8 @@ public sealed partial class SimulatedCourierTrackingService(
                 : _options.TrackingLatencyMs;
             await Task.Delay(latency, timeout.Token).ConfigureAwait(false);
 
-            var matches = await shipments.FindAsync(
-                Specification<ShippingOrderEntity>.Where(s => string.Equals(s.TrackingNumber, trackingNumber, StringComparison.OrdinalIgnoreCase)),
-                timeout.Token).ConfigureAwait(false);
-
-            if (matches is not [var shipment, ..])
+            var shipment = await shipments.GetShipmentByTrackingNumberAsync(trackingNumber, timeout.Token).ConfigureAwait(false);
+            if (shipment is null)
             {
                 return new TrackingResult.NotFound(trackingNumber);
             }

@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ApexPost.MVC\ApexPost.MVC.csproj" />
+    <ProjectReference Include="..\ApexPost.CounterTerminal\ApexPost.CounterTerminal.csproj" />
   </ItemGroup>
 
   <ItemGroup>

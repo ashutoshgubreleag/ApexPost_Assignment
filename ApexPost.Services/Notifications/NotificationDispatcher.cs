@@ -1,8 +1,10 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ApexPost.Database.Models;
-using ApexPost.Repositories;
+using Microsoft.Extensions.DependencyInjection;
+using ApexPost.Models.Domain;
+using ApexPost.Models.ValueObjects;
+using ApexPost.Services.Abstractions;
 using ApexPost.Services.Events;
 
 namespace ApexPost.Services.Notifications;
@@ -18,20 +20,20 @@ namespace ApexPost.Services.Notifications;
 public sealed partial class NotificationDispatcher : BackgroundService
 {
     private readonly IApexPostEvents _events;
-    private readonly IBaseEntityRepository<NotificationEntity> _notifications;
+    private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<NotificationDispatcher> _logger;
     private readonly TimeProvider _clock;
-    private readonly Channel<NotificationEntity> _queue = Channel.CreateBounded<NotificationEntity>(
+    private readonly Channel<Notification> _queue = Channel.CreateBounded<Notification>(
         new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
 
     public NotificationDispatcher(
         IApexPostEvents events,
-        IBaseEntityRepository<NotificationEntity> notifications,
+        IServiceScopeFactory scopes,
         ILogger<NotificationDispatcher> logger,
         TimeProvider clock)
     {
         _events = events;
-        _notifications = notifications;
+        _scopes = scopes;
         _logger = logger;
         _clock = clock;
 
@@ -57,7 +59,10 @@ public sealed partial class NotificationDispatcher : BackgroundService
             {
                 try
                 {
-                    await _notifications.AddAsync(notification, stoppingToken).ConfigureAwait(false);
+                    // The dispatcher is a singleton; each notification gets its own scope (DbContext + unit of work).
+                    await using var scope = _scopes.CreateAsyncScope();
+                    scope.ServiceProvider.GetRequiredService<INotificationRepository>().Add(notification);
+                    await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(stoppingToken).ConfigureAwait(false);
                     LogNotificationSent(notification.Type, notification.Recipient, notification.Message, notification.CorrelationId);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -73,14 +78,12 @@ public sealed partial class NotificationDispatcher : BackgroundService
         }
     }
 
-    private void OnStockLow(object? sender, StockLowEventArgs e) => Enqueue(new NotificationEntity
-    {
-        Type = NotificationType.LowStock,
-        BranchCode = e.BranchCode,
-        Recipient = $"manager.{e.BranchCode.Value.ToLowerInvariant()}@apexpost.local",
-        Message = $"Low stock at {e.BranchCode}: {e.ProductName} ({e.Sku}) has {e.QuantityOnHand} left (reorder at {e.ReorderThreshold}).",
-        CorrelationId = e.CorrelationId,
-    });
+    private void OnStockLow(object? sender, StockLowEventArgs e) => Enqueue(
+        NotificationType.LowStock,
+        e.BranchCode,
+        $"manager.{e.BranchCode.Value.ToLowerInvariant()}@apexpost.local",
+        $"Low stock at {e.BranchCode}: {e.ProductName} ({e.Sku}) has {e.QuantityOnHand} left (reorder at {e.ReorderThreshold}).",
+        e.CorrelationId);
 
     private void OnMoneyOrderIssued(object? sender, MoneyOrderIssuedEventArgs e)
     {
@@ -89,28 +92,24 @@ public sealed partial class NotificationDispatcher : BackgroundService
             return;
         }
 
-        Enqueue(new NotificationEntity
-        {
-            Type = NotificationType.HighValueMoneyOrder,
-            BranchCode = e.BranchCode,
-            Recipient = "compliance@apexpost.local",
-            Message = $"High-value money order {e.SerialNumber} for {e.Amount} issued at {e.BranchCode}.",
-            CorrelationId = e.CorrelationId,
-        });
+        Enqueue(
+            NotificationType.HighValueMoneyOrder,
+            e.BranchCode,
+            "compliance@apexpost.local",
+            $"High-value money order {e.SerialNumber} for {e.Amount} issued at {e.BranchCode}.",
+            e.CorrelationId);
     }
 
-    private void OnTransactionVoided(object? sender, TransactionVoidedEventArgs e) => Enqueue(new NotificationEntity
-    {
-        Type = e.IsRefund ? NotificationType.TransactionRefunded : NotificationType.TransactionVoided,
-        BranchCode = e.BranchCode,
-        Recipient = "audit@apexpost.local",
-        Message = $"Transaction {e.TransactionId} at {e.BranchCode} was {(e.IsRefund ? "refunded" : "voided")} by staff {e.ManagerStaffId} ({e.Total}). Reason: {e.Reason}",
-        CorrelationId = e.CorrelationId,
-    });
+    private void OnTransactionVoided(object? sender, TransactionVoidedEventArgs e) => Enqueue(
+        e.IsRefund ? NotificationType.TransactionRefunded : NotificationType.TransactionVoided,
+        e.BranchCode,
+        "audit@apexpost.local",
+        $"Transaction {e.TransactionId} at {e.BranchCode} was {(e.IsRefund ? "refunded" : "voided")} by staff {e.ManagerStaffId} ({e.Total}). Reason: {e.Reason}",
+        e.CorrelationId);
 
-    private void Enqueue(NotificationEntity notification)
+    private void Enqueue(NotificationType type, BranchCode branch, string recipient, string message, string correlationId)
     {
-        notification.CreatedAt = _clock.GetUtcNow();
+        var notification = Notification.Create(type, branch, recipient, message, correlationId, _clock.GetUtcNow());
         if (!_queue.Writer.TryWrite(notification))
         {
             LogNotificationDropped(notification.Type);

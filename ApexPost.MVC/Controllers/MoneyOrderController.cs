@@ -21,13 +21,13 @@ public sealed class MoneyOrderController(
 
     [Authorize(Policy = Policies.CanTransact)]
     [HttpGet]
-    public IActionResult Create(int id) =>
+    public IActionResult Create([FromRoute] int id) =>
         View(new MoneyOrderFormViewModel { TransactionId = id, IdentityThreshold = rules.Value.MoneyOrderIdentityThreshold });
 
     [Authorize(Policy = Policies.CanTransact)]
     [HttpPost]
     [Audited("MoneyOrder.Add", "Amount")]
-    public async Task<IActionResult> Create(int id, MoneyOrderFormViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create([FromRoute] int id, MoneyOrderFormViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         var order = await transactions.AddMoneyOrderAsync(id, new MoneyOrderCommand
@@ -46,7 +46,7 @@ public sealed class MoneyOrderController(
 
     [Authorize(Policy = Policies.CanTransact)]
     [HttpGet]
-    public IActionResult Verify(int id) => View(new IdentityVerificationFormViewModel { TransactionId = id });
+    public IActionResult Verify([FromRoute] int id) => View(new IdentityVerificationFormViewModel { TransactionId = id });
 
     /// <summary>
     /// Identity verification. Only DocumentType and Result are whitelisted for audit; the document
@@ -55,7 +55,7 @@ public sealed class MoneyOrderController(
     [Authorize(Policy = Policies.CanTransact)]
     [HttpPost]
     [Audited("IdentityVerification.Record", "DocumentType", "Result")]
-    public async Task<IActionResult> Verify(int id, IdentityVerificationFormViewModel model, CancellationToken cancellationToken)
+    public async Task<IActionResult> Verify([FromRoute] int id, IdentityVerificationFormViewModel model, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         var verification = await transactions.AddIdentityVerificationAsync(id, new IdentityVerificationCommand

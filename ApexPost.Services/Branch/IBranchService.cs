@@ -1,4 +1,5 @@
-using ApexPost.Database.Models;
+using ApexPost.Models.Domain;
+using ApexPost.Services.Abstractions;
 using ApexPost.Models.Validation;
 using ApexPost.Models.ValueObjects;
 using ApexPost.Services.Common;
@@ -25,16 +26,13 @@ public sealed record SaveBranchCommand
 
 public interface IBranchService
 {
-    Task<IReadOnlyList<BranchEntity>> GetAllAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<BranchDto>> GetAllAsync(CancellationToken cancellationToken);
 
-    Task<BranchEntity> GetByCodeAsync(BranchCode branchCode, CancellationToken cancellationToken);
+    Task<BranchDto> GetByCodeAsync(BranchCode branchCode, CancellationToken cancellationToken);
 
-    Task<BranchEntity> CreateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken);
+    Task<BranchDto> CreateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken);
 
-    Task<BranchEntity> UpdateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken);
+    Task<BranchDto> UpdateAsync(SaveBranchCommand command, StaffContext actor, CancellationToken cancellationToken);
 
     Task SetStatusAsync(BranchCode branchCode, BranchStatus status, StaffContext actor, CancellationToken cancellationToken);
-
-    /// <summary>Throws if the branch is closed ("a closed branch cannot accept transactions").</summary>
-    Task<BranchEntity> EnsureOpenForTradingAsync(BranchCode branchCode, CancellationToken cancellationToken);
 }

@@ -165,34 +165,31 @@ public sealed class AuthorizationAndAuditTests : IClassFixture<ApexPostWebApplic
         Assert.Contains(">Paid<", details, StringComparison.Ordinal);
         Assert.Contains("****4433", details, StringComparison.Ordinal);
 
-        var lines = await File.ReadAllLinesAsync(_factory.AuditFile);
-        var entries = lines.Select(l => JsonDocument.Parse(l).RootElement).Where(e => e.GetProperty("CorrelationId").GetString() == "audit-flow-test-1").ToList();
-        var actions = entries.Select(e => e.GetProperty("Action").GetString()).ToList();
+        var all = _factory.AuditEntries;
+        var entries = all.Where(e => e.CorrelationId == "audit-flow-test-1").ToList();
+        var actions = entries.Select(e => e.Action).ToList();
         Assert.Contains("Account.Login", actions);
         Assert.Contains("MoneyOrder.Add", actions);
         Assert.Contains("IdentityVerification.Record", actions);
 
-        var pays = entries.Where(e => e.GetProperty("Action").GetString() == "Transaction.Pay").ToList();
+        var pays = entries.Where(e => e.Action == "Transaction.Pay").ToList();
         Assert.Equal(2, pays.Count);
-        Assert.Equal("Rejected", pays[0].GetProperty("Outcome").GetString());
-        Assert.Equal("MONEY_ORDER_ID_REQUIRED", pays[0].GetProperty("Error").GetString());
-        Assert.Equal("Succeeded", pays[1].GetProperty("Outcome").GetString());
+        Assert.Equal("Rejected", pays[0].Outcome);
+        Assert.Equal("MONEY_ORDER_ID_REQUIRED", pays[0].Error);
+        Assert.Equal("Succeeded", pays[1].Outcome);
         Assert.All(entries, e =>
         {
-            Assert.Equal("8", e.GetProperty("StaffId").GetString());
-            Assert.Equal("BR-001", e.GetProperty("BranchCode").GetString());
+            Assert.Equal("8", e.StaffId);
+            Assert.Equal("BR-001", e.BranchCode);
         });
 
-        var raw = string.Join("\n", lines);
+        var raw = string.Join("\n", all.Select(e => JsonSerializer.Serialize(e)));
         Assert.DoesNotContain("PX7766554433", raw, StringComparison.Ordinal);
         Assert.DoesNotContain("ApexPost123!", raw, StringComparison.Ordinal);
         Assert.DoesNotContain(ApexPostWebApplicationFactory.TestApiKey, raw, StringComparison.Ordinal);
 
-        // Also not in the data files.
-        foreach (var file in Directory.GetFiles(_factory.DataDirectory, "*.json"))
-        {
-            Assert.DoesNotContain("PX7766554433", await File.ReadAllTextAsync(file), StringComparison.Ordinal);
-        }
+        // Also not in the stored data (only the last four characters are kept).
+        Assert.DoesNotContain(_factory.Store.All<ApexPost.Models.Domain.IdentityVerification>(), v => v.MaskedDocumentNumber.Value.Contains("7766", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -217,15 +214,14 @@ public sealed class AuthorizationAndAuditTests : IClassFixture<ApexPostWebApplic
         Assert.Contains(">Voided<", after, StringComparison.Ordinal);
         Assert.Contains("Customer walked away", after, StringComparison.Ordinal);
 
-        var audit = (await File.ReadAllLinesAsync(_factory.AuditFile))
-            .Select(l => JsonDocument.Parse(l).RootElement)
-            .Where(e => e.GetProperty("CorrelationId").GetString() == "void-test-1" && e.GetProperty("Action").GetString() == "Transaction.Void")
+        var audit = _factory.AuditEntries
+            .Where(e => e.CorrelationId == "void-test-1" && e.Action == "Transaction.Void")
             .ToList();
         Assert.Equal(2, audit.Count);
-        Assert.Equal("Rejected", audit[0].GetProperty("Outcome").GetString());
-        Assert.Equal("Succeeded", audit[1].GetProperty("Outcome").GetString());
-        Assert.Equal("BranchManager", audit[1].GetProperty("Role").GetString());
-        Assert.Equal("Customer walked away", audit[1].GetProperty("Fields").GetProperty("Reason").GetString());
+        Assert.Equal("Rejected", audit[0].Outcome);
+        Assert.Equal("Succeeded", audit[1].Outcome);
+        Assert.Equal("BranchManager", audit[1].Role);
+        Assert.Equal("Customer walked away", audit[1].Fields["Reason"]);
     }
 
     [Fact]

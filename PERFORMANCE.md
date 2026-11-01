@@ -3,7 +3,7 @@
 This document records how the five reporting indexes (migration `AddReportingIndexes`, ADR-W3-02)
 and two query rewrites were chosen, and what they changed, measured on real execution plans.
 
-> Every number below was measured by `scripts/run-perf.ps1` on 2026-10-31 and copied from
+> Every number below was measured by `scripts/run-perf.ps1` on 2026-11-01 (latest run) and copied from
 > `database/perf/results/summary.md`. The **actual** execution plans are committed in
 > `database/perf/results/before/` and `after/` (`.sqlplan`, open in SSMS or Azure Data Studio), with
 > the raw `STATISTICS IO/TIME` output next to each plan (`.txt`). Nothing here is estimated.
@@ -65,13 +65,13 @@ Environment: SQL Server 2025 (17.00.1000) Enterprise Evaluation, default instanc
 
 | Workload | Logical reads before | Logical reads after | Change | CPU ms before → after | Elapsed ms before → after | Rows | Plan before → after |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| W1a daily sales, original `YEAR/MONTH/DAY` | 5,523 | 1,650 | −70% | 62 → 63 | 62 → 60 | 1 | Clustered index scan → scan of the narrower filtered index + seek (index intersection) |
-| **W1b daily sales, rewritten `BusinessDate = @Day`** | 5,523 | **5** | **−99.9%** | 32 → 0 | 38 → 0 | 1 | Clustered index scan → **Index Seek** `IX_CounterTransactions_Branch_BusinessDate` |
-| W2a monthly revenue, original `YEAR/MONTH` | 5,523 | 1,240 | −78% | 109 → 63 | 111 → 75 | 6 | Clustered index scan → **Index Scan** of `IX_CounterTransactions_ClosedAt_Paid` |
-| **W2b monthly revenue, rewritten range** | 5,523 | **57** | **−99.0%** | 78 → 16 | 67 → 9 | 6 | Clustered index scan → **Index Seek** `IX_CounterTransactions_ClosedAt_Paid` |
-| W3 shipping volume (zone + level + quarter) | 1,932 | 8 | −99.6% | 16 → 0 | 20 → 1 | 6 | Clustered index scan → **Index Seek** `IX_Shipments_Zone_Level_QuotedAt` |
-| W4 money-order audit (branch + month) | 1,041 | 7 | −99.3% | 15 → 0 | 11 → 1 | 342 | Clustered index scan → **Index Seek** `IX_MoneyOrders_Branch_RequestedAt_Audited` |
-| W5 low stock (`usp_LowStockReport`) | 56 | 54 | −4% | 15 → 0 | 9 → 5 | 13 | Clustered index scan → **Index Seek** `IX_BranchStock_Branch_Covering` |
+| W1a daily sales, original `YEAR/MONTH/DAY` | 5,523 | 1,651 | −70% | 62 → 62 | 72 → 64 | 1 | Clustered index scan → scan of the narrower filtered index + seek (index intersection) |
+| **W1b daily sales, rewritten `BusinessDate = @Day`** | 5,523 | **4** | **−99.9%** | 31 → 0 | 34 → 0 | 1 | Clustered index scan → **Index Seek** `IX_CounterTransactions_Branch_BusinessDate` |
+| W2a monthly revenue, original `YEAR/MONTH` | 5,523 | 1,241 | −78% | 79 → 62 | 88 → 68 | 6 | Clustered index scan → **Index Scan** of `IX_CounterTransactions_ClosedAt_Paid` |
+| **W2b monthly revenue, rewritten range** | 5,523 | **57** | **−99.0%** | 47 → 0 | 53 → 8 | 6 | Clustered index scan → **Index Seek** `IX_CounterTransactions_ClosedAt_Paid` |
+| W3 shipping volume (zone + level + quarter) | 1,932 | 8 | −99.6% | 16 → 0 | 15 → 1 | 6 | Clustered index scan → **Index Seek** `IX_Shipments_Zone_Level_QuotedAt` |
+| W4 money-order audit (branch + month) | 1,041 | 7 | −99.3% | 16 → 0 | 10 → 1 | 342 | Clustered index scan → **Index Seek** `IX_MoneyOrders_Branch_RequestedAt_Audited` |
+| W5 low stock (`usp_LowStockReport`) | 56 | 54 | −4% | 16 → 15 | 13 → 7 | 13 | Clustered index scan → **Index Seek** `IX_BranchStock_Branch_Covering` |
 
 CPU and elapsed times are medians of three warm runs. At this volume they are in the tens of
 milliseconds, so the 1 ms timer resolution makes "0" mean "under a millisecond". Logical reads are
@@ -83,29 +83,29 @@ The original and rewritten queries return the same rows. With all indexes presen
 
 | | Operator (from the `.sqlplan`) | Logical reads |
 | --- | --- | ---: |
-| W2a `YEAR(ClosedAtUtc) = @Year AND MONTH(ClosedAtUtc) = @Month` | **Index Scan**: every row of `IX_CounterTransactions_ClosedAt_Paid` is read and `YEAR()`/`MONTH()` evaluated (est. 17,356 rows, actual 11,819) | 1,240 |
-| W2b `ClosedAtUtc >= @From AND ClosedAtUtc < @To` | **Index Seek** with a range seek predicate on the same index (est. 11,953, actual 11,819) | 57 |
-| W1a `YEAR()/MONTH()/DAY()` | Scan of the filtered index, then joined to a seek on the branch index: 46,000 rows touched to return 67 | 1,650 |
-| W1b `BusinessDate = @Day` | **Index Seek** on (`BranchCode`, `BusinessDate`) (est. 186, actual 67) | 5 |
+| W2a `YEAR(ClosedAtUtc) = @Year AND MONTH(ClosedAtUtc) = @Month` | **Index Scan**: every row of `IX_CounterTransactions_ClosedAt_Paid` is read and `YEAR()`/`MONTH()` evaluated (est. 17,303 rows, actual 11,819) | 1,241 |
+| W2b `ClosedAtUtc >= @From AND ClosedAtUtc < @To` | **Index Seek** with a range seek predicate on the same index (est. 11,927, actual 11,819) | 57 |
+| W1a `YEAR()/MONTH()/DAY()` | Scan of the filtered index, then joined to a seek on the branch index: 46,000 rows touched to return 67 | 1,651 |
+| W1b `BusinessDate = @Day` | **Index Seek** on (`BranchCode`, `BusinessDate`) (est. 77, actual 67) | 4 |
 
 Wrapping the column in a function hides it from the index: SQL Server can only scan and compute.
 The new index made the scan smaller (narrower rows, paid rows only), but only the SARGable
-rewrite turns it into a seek: **22× fewer reads for W2, 330× for W1**. That is why the application
+rewrite turns it into a seek: **22× fewer reads for W2, 400× for W1**. That is why the application
 queries use `BusinessDate` (persisted computed column) and half-open ranges, never `YEAR()`.
 
 ### 4.2 Reading the "after" plans
 
 | Workload | Seek on | Key lookup? | Estimated vs actual rows | Missing-index hint |
 | --- | --- | --- | --- | --- |
-| W1b | `IX_CounterTransactions_Branch_BusinessDate` (BranchCode = @BranchCode, BusinessDate = @Day); `Status = 'Paid'` checked as a residual predicate on the INCLUDE column | No (covered) | 186 / 67 | none (before: 99.9% impact) |
-| W2b | `IX_CounterTransactions_ClosedAt_Paid` range on ClosedAtUtc; the index filter already guarantees `Status = 'Paid'` | No (covered) | 11,953 / 11,819 | none (before: 89.1%) |
-| W3 | `IX_Shipments_Zone_Level_QuotedAt` (ZoneCode, ServiceLevel equality + QuotedAtUtc range) | No (covered) | 2,698 / 405 | none (before: 93.4%) |
+| W1b | `IX_CounterTransactions_Branch_BusinessDate` (BranchCode = @BranchCode, BusinessDate = @Day); `Status = 'Paid'` checked as a residual predicate on the INCLUDE column | No (covered) | 77 / 67 | none (before: 99.9% impact) |
+| W2b | `IX_CounterTransactions_ClosedAt_Paid` range on ClosedAtUtc; the index filter already guarantees `Status = 'Paid'` | No (covered) | 11,927 / 11,819 | none (before: 89.1%) |
+| W3 | `IX_Shipments_Zone_Level_QuotedAt` (ZoneCode, ServiceLevel equality + QuotedAtUtc range) | No (covered) | 2,706 / 405 | none (before: 93.4%) |
 | W4 | `IX_MoneyOrders_Branch_RequestedAt_Audited` (BranchCode equality + RequestedAtUtc range); filtered on Issued/Cancelled | No (covered) | 343 / 342 | none (before: 90.9%) |
 | W5 | `IX_BranchStock_Branch_Covering`, then `UQ_Products_Sku` for the product name | No | 18 / 13 | none |
 
 * Every "before" plan carried a missing-index recommendation (impact 88–99.9%), and every "after"
   plan has none: the five indexes are exactly what the optimizer asked for, and nothing more.
-* Estimates are close to actuals except W3 (2,698 vs 405). The optimizer assumes zone, level and
+* Estimates are close to actuals except W3 (2,706 vs 405). The optimizer assumes zone, level and
   date are independent. The plan shape is still the right one (a seek returning a few hundred
   rows), so no hint or statistics change was made.
 * **W5 is honest about scale**: `BranchStock` has 192 rows, so the scan was already cheap (56 vs
@@ -115,20 +115,38 @@ queries use `BusinessDate` (persisted computed column) and half-open ranges, nev
 
 ### 4.3 Costs: write overhead and storage
 
-Each index is extra work on every insert/update and extra storage. Two write workloads measure it
-the same way as the reads (before = without the reporting indexes, after = with them):
+Indexes are not free: every insert must also write each index. Two write workloads measure this
+the same way as the reads (insert 20,000 rows in one statement, then roll back; before = without
+the reporting indexes, after = with them):
 
-| Workload | What it does |
-| --- | --- |
-| W6 write transactions | Inserts 20,000 paid `CounterTransactions` in one statement, then rolls back (2 reporting indexes to maintain) |
-| W7 write shipments | Inserts 20,000 `Shipments`, then rolls back (1 wide covering index to maintain) |
+| Workload | Indexes maintained (from the insert plan) | Logical reads before → after | CPU ms before → after | Elapsed ms before → after |
+| --- | --- | ---: | ---: | ---: |
+| W6 insert 20,000 `CounterTransactions` | 4 → **6** (+ `Branch_BusinessDate`, + filtered `ClosedAt_Paid`) | 286,406 → 415,485 (**+45%**) | 750 → 1,266 | 807 → 1,733 (**+0.046 ms per row**) |
+| W7 insert 20,000 `Shipments` | 5 → **6** (+ `Zone_Level_QuotedAt`) | 423,501 → 488,427 (**+15%**) | 1,016 → 1,250 | 1,135 → 1,372 (**+0.012 ms per row**) |
 
-_Write-cost and index-size numbers: pending the next `run-perf.ps1` run (W6/W7 and the storage table
-were added after the read measurements above). They will be copied here from `summary.md`._
+Storage of each reporting index next to its table (clustered index), 300k-transaction volume:
 
-Context for the decision: the hot write path (`PayAsync`) inserts one transaction and updates a few
-stock rows, so per sale the extra cost is a handful of index rows, while the reads it speeds up run
-on every dashboard load and report.
+| Table | Table (clustered) | Reporting index | Index size | Relative to table |
+| --- | ---: | --- | ---: | ---: |
+| CounterTransactions | 44,200 KB | `IX_CounterTransactions_Branch_BusinessDate` | 34,264 KB | 78% |
+| CounterTransactions | | `IX_CounterTransactions_ClosedAt_Paid` (filtered: 276,000 of 300,000 rows) | 17,672 KB | 40% |
+| Shipments | 27,616 KB | `IX_Shipments_Zone_Level_QuotedAt` | 13,192 KB | 48% |
+| MoneyOrders | 8,328 KB | `IX_MoneyOrders_Branch_RequestedAt_Audited` (filtered) | 3,528 KB | 42% |
+| BranchStock | 32 KB | `IX_BranchStock_Branch_Covering` | 16 KB | 50% |
+
+**Is it worth it?**
+
+* **Writes:** a counter sale inserts *one* transaction, so the extra index work is about
+  0.05 ms per sale, which cannot be seen next to the network round trip. Bulk loads pay more
+  (W6: 0.8 s → 1.7 s for 20,000 rows); the nightly-import case is acceptable at this size and could
+  disable and rebuild the indexes if it ever is not.
+* **Storage:** the two `CounterTransactions` indexes are the most expensive (together larger than
+  the table) because their INCLUDE columns make them covering. That is a deliberate trade: covering
+  removes every key lookup from the dashboard and finance reports (§4.2), which run far more often
+  than sales are inserted in bulk. The filtered indexes stay smaller by leaving out rows the
+  reports never read (unpaid baskets, pending money orders).
+* **What was not done:** no index was added for queries that only run ad hoc, and
+  `BranchStock`'s index is kept despite the tiny measured gain because its cost is 16 KB.
 
 ## 5. EF Core query shape
 

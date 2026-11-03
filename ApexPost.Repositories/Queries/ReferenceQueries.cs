@@ -99,13 +99,18 @@ public sealed class CatalogQueries(ApexPostDbContext db) : ICatalogQueries
     }
 
     public async Task<IReadOnlyList<StockDto>> GetStockForBranchAsync(BranchCode branch, CancellationToken cancellationToken) =>
-        // One query: stock joined to products for the name (no per-row product lookups).
-        await (from s in db.BranchStock.AsNoTracking()
-               join p in db.Products.AsNoTracking() on s.Sku equals p.Sku
-               where s.BranchCode == branch
-               orderby p.Name
-               select new StockDto(s.BranchCode, s.Sku, p.Name, s.QuantityOnHand, s.ReorderThreshold))
-            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        await StockForBranchQuery(branch).ToListAsync(cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// One query: stock joined to products for the name (no per-row product lookups), projected
+    /// straight to the DTO. Exposed so tests can capture its SQL with ToQueryString.
+    /// </summary>
+    public IQueryable<StockDto> StockForBranchQuery(BranchCode branch) =>
+        from s in db.BranchStock.AsNoTracking()
+        join p in db.Products.AsNoTracking() on s.Sku equals p.Sku
+        where s.BranchCode == branch
+        orderby p.Name
+        select new StockDto(s.BranchCode, s.Sku, p.Name, s.QuantityOnHand, s.ReorderThreshold);
 }
 
 public sealed class NotificationQueries(ApexPostDbContext db) : INotificationQueries

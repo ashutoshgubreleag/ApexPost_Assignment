@@ -2,19 +2,31 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using ApexPost.Models.Exceptions;
+using ApexPost.Services.Abstractions;
 
 namespace ApexPost.Utilities.Filters;
 
-/// <summary>One mapping from domain exceptions to HTTP status, shared by filters and the exception handler.</summary>
+/// <summary>
+/// One mapping from domain exceptions to HTTP status, shared by filters and the exception handler:
+/// <list type="bullet">
+/// <item>400 Bad Request: invalid input or a broken business rule (the request cannot be
+/// processed as sent; the body carries the rule code, e.g. <c>STOCK_INSUFFICIENT</c>).</item>
+/// <item>403 / 404: not allowed / not found.</item>
+/// <item>409 Conflict: the request clashed with the current state of the data: an optimistic
+/// concurrency conflict (rowversion) or a unique-key violation (SQL 2601/2627).</item>
+/// <item>500: anything unexpected (no details leak).</item>
+/// </list>
+/// </summary>
 public static class DomainExceptionMapper
 {
     public static int StatusFor(Exception exception) => exception switch
     {
         CommandValidationException => StatusCodes.Status400BadRequest,
+        BusinessRuleViolationException => StatusCodes.Status400BadRequest,
         ForbiddenOperationException => StatusCodes.Status403Forbidden,
         EntityNotFoundException => StatusCodes.Status404NotFound,
-        BusinessRuleViolationException => StatusCodes.Status422UnprocessableEntity,
         ConcurrencyConflictException => StatusCodes.Status409Conflict,
+        DuplicateKeyException => StatusCodes.Status409Conflict,
         OperationCanceledException => 499, // client closed request (nginx convention); nobody reads it
         _ => StatusCodes.Status500InternalServerError,
     };
@@ -26,7 +38,16 @@ public static class DomainExceptionMapper
         ForbiddenOperationException => "FORBIDDEN",
         EntityNotFoundException => "NOT_FOUND",
         ConcurrencyConflictException => "CONCURRENCY_CONFLICT",
+        DuplicateKeyException => "DUPLICATE_KEY",
         _ => exception.GetType().Name,
+    };
+
+    /// <summary>Problem Details title for an exception (400 has two meanings, so the type decides).</summary>
+    public static string TitleFor(Exception exception) => exception switch
+    {
+        BusinessRuleViolationException => "Business rule violated",
+        DuplicateKeyException => "Duplicate value",
+        _ => TitleFor(StatusFor(exception)),
     };
 
     public static string TitleFor(int status) => status switch
@@ -35,7 +56,6 @@ public static class DomainExceptionMapper
         403 => "Forbidden",
         404 => "Not found",
         409 => "Conflicting change",
-        422 => "Business rule violated",
         _ => "An unexpected error occurred",
     };
 

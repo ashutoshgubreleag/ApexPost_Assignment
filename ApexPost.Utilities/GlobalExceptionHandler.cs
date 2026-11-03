@@ -42,7 +42,7 @@ public sealed partial class GlobalExceptionHandler(ILogger<GlobalExceptionHandle
         var problem = new ProblemDetails
         {
             Status = status,
-            Title = DomainExceptionMapper.TitleFor(status),
+            Title = DomainExceptionMapper.TitleFor(exception),
             Detail = status == StatusCodes.Status500InternalServerError
                 ? "An unexpected error occurred. Quote the correlation ID when contacting support."
                 : exception.Message,

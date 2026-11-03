@@ -11,6 +11,8 @@ selling when the network is down and syncs when it comes back.
 * Architecture, ER diagram, sync design, ADRs, SOLID: **[DESIGN.md](DESIGN.md)**
 * Indexes, execution plans, before/after numbers: **[PERFORMANCE.md](PERFORMANCE.md)**
 * Offline conflict policies: **[CONFLICTS.md](CONFLICTS.md)**
+* Standalone T-SQL (reports incl. top 10 products per region, a sale as one T-SQL transaction,
+  SSMS blocking demo, deadlock-avoidance note): **[sql/](sql/README.md)**
 * Demo script: **[docs/DEMO.md](docs/DEMO.md)** · Week 2 design (middleware, filters, auth): [docs/DESIGN-week2.md](docs/DESIGN-week2.md)
 
 ![Branch dashboard](docs/screenshots/dashboard.png)
@@ -30,7 +32,8 @@ selling when the network is down and syncs when it comes back.
 | `ApexPost.Tests` | Unit tests (fakes) and WebApplicationFactory tests |
 | `ApexPost.CounterTerminal.Tests` | Terminal tests on a real Couchbase Lite database |
 | `ApexPost.IntegrationTests` | SQL Server tests on disposable, migrated databases |
-| `database/` | `schema.sql` (idempotent migration script) and `perf/` (volume generator, workloads, results) |
+| `database/` | `schema.sql` (idempotent migration script), `perf/` (volume generator, workloads, results), `querystring/` (`ToQueryString` output of three queries) |
+| `sql/` | Standalone T-SQL run in SSMS: reports, the sale transaction, blocking demo, `DEADLOCKS.md` |
 | `scripts/` | `run-perf.ps1` (before/after plans), `verify-week3.ps1` (build + all tests + perf) |
 
 Flow: **Controller → Service → Repository/Query service → EF Core → SQL Server**. Controllers get DTOs only.
@@ -148,14 +151,18 @@ The full walkthrough (offline sale, reconnect, price conflict, duplicate push) i
 Headers `X-Device-Id` and `X-Device-Key`; HTTPS only; rate limited per device (429); errors are
 Problem Details (400/401/409/429). See DESIGN.md §6.
 
+Across the app, business-rule and validation failures are **400** (with a rule code such as
+`STOCK_INSUFFICIENT`), and conflicting changes are **409**: a `rowversion` conflict, or a
+unique-key violation such as the same staff e-mail saved twice at once. See DESIGN.md §5.1.
+
 ## Tests
 
 ```powershell
 dotnet build .\ApexPost.slnx                    # zero warnings (TreatWarningsAsErrors)
-dotnet test  .\ApexPost.Tests                   # 134 unit, web, over-posting and terminal-to-server tests, no database needed
+dotnet test  .\ApexPost.Tests                   # 143 unit, web, over-posting and terminal-to-server tests, no database needed
 dotnet test  .\ApexPost.CounterTerminal.Tests   # 31 tests on a real Couchbase Lite database
 $env:APEXPOST_TEST_SQL = "Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True"
-dotnet test  .\ApexPost.IntegrationTests        # 29 SQL Server tests (creates and drops ApexPostTest_* databases)
+dotnet test  .\ApexPost.IntegrationTests        # 46 SQL Server tests (creates and drops ApexPostTest_* databases), incl. the sql/ scripts
 ```
 
 Or everything, including the performance run, with logs in `artifacts\verify`:

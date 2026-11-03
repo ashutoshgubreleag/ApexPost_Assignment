@@ -123,13 +123,7 @@ public sealed class ReportQueries(ApexPostDbContext db) : IReportQueries
             ORDER BY b.BranchCode
             """).ToListAsync(cancellationToken).ConfigureAwait(false);
 
-        var startOffset = new DateTimeOffset(start, TimeSpan.Zero);
-        var endOffset = new DateTimeOffset(end, TimeSpan.Zero);
-        var orders = await db.MoneyOrders.AsNoTracking()
-            .Where(m => m.Status != MoneyOrderStatus.Pending && m.CreatedAt >= startOffset && m.CreatedAt < endOffset && (branch == null || m.BranchCode == branch))
-            .OrderByDescending(m => m.CreatedAt)
-            .Take(500)
-            .Select(m => new MoneyOrderDto(m.Id, m.SerialNumber, m.TransactionId, m.BranchCode, m.Amount, m.Fee, m.Sender, m.Recipient, m.IdentityVerificationId, m.Status, m.CreatedAt, m.IssuedAt))
+        var orders = await MoneyOrderAuditListQuery(from, to, branch, take: 500)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var checks = await db.IdentityVerifications.AsNoTracking()
@@ -142,6 +136,24 @@ public sealed class ReportQueries(ApexPostDbContext db) : IReportQueries
             rows.Select(r => new MoneyOrderAuditRow(new BranchCode(r.BranchCode), r.BranchName, r.MoneyOrderCount, new Money(r.FaceValue), new Money(r.Fees), r.HighValueCount, r.VerificationsPassed, r.VerificationsFailed)).ToList(),
             orders,
             checks.Select(IdentityVerificationMapper.ToDto).ToList());
+    }
+
+    /// <summary>
+    /// The money-order list of the audit report: non-pending orders in a date range, newest first,
+    /// capped, projected to the DTO in SQL. The optional branch is a parameter
+    /// (<c>@branch IS NULL OR BranchCode = @branch</c>), not a second query shape. Exposed so tests
+    /// can capture its SQL with ToQueryString.
+    /// </summary>
+    public IQueryable<MoneyOrderDto> MoneyOrderAuditListQuery(DateOnly from, DateOnly to, BranchCode? branch, int take)
+    {
+        var (start, end) = Range(from, to);
+        var startOffset = new DateTimeOffset(start, TimeSpan.Zero);
+        var endOffset = new DateTimeOffset(end, TimeSpan.Zero);
+        return db.MoneyOrders.AsNoTracking()
+            .Where(m => m.Status != MoneyOrderStatus.Pending && m.CreatedAt >= startOffset && m.CreatedAt < endOffset && (branch == null || m.BranchCode == branch))
+            .OrderByDescending(m => m.CreatedAt)
+            .Take(take)
+            .Select(m => new MoneyOrderDto(m.Id, m.SerialNumber, m.TransactionId, m.BranchCode, m.Amount, m.Fee, m.Sender, m.Recipient, m.IdentityVerificationId, m.Status, m.CreatedAt, m.IssuedAt));
     }
 
     /// <summary>Inclusive calendar range → half-open UTC range [from 00:00, to+1 00:00): SARGable on the datetime column.</summary>

@@ -40,7 +40,7 @@ public sealed class DomainExceptionFilter(ITempDataDictionaryFactory tempDataFac
             var problem = new ProblemDetails
             {
                 Status = status,
-                Title = DomainExceptionMapper.TitleFor(status),
+                Title = DomainExceptionMapper.TitleFor(exception),
                 Detail = exception.Message,
             };
             problem.Extensions["code"] = DomainExceptionMapper.ErrorCodeFor(exception);

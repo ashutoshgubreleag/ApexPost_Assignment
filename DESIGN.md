@@ -171,6 +171,32 @@ whatever happens to the rows they describe.
   owned by SQL Server, so it cannot disagree with its source, and it makes the daily report SARGable.
 * `LineTotal` and `TaxAmount` per line are likewise the price charged at the time.
 
+#### The anomalies 3NF prevents (a worked example)
+
+Suppose sales were stored the "spreadsheet way", in one wide table with a row per line sold:
+
+| TransactionId | LineNo | BranchCode | BranchName | Region | ClerkEmail | Sku | ProductName | Category | UnitPrice | Qty |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3005 | 1 | BR-001 | Sydney CBD | NSW | clerk.br001a@… | PKG-001 | Small padded bag | Packaging | 2.95 | 2 |
+| 3005 | 2 | BR-001 | Sydney CBD | NSW | clerk.br001a@… | PKG-002 | Medium padded bag | Packaging | 3.95 | 1 |
+| 3006 | 1 | BR-001 | Sydney CBD | NSW | clerk.br001b@… | PKG-001 | Small padded bag | Packaging | 2.95 | 1 |
+
+The key is (TransactionId, LineNo). Branch, region and clerk depend only on TransactionId, which
+is part of the key: a **partial dependency**, so 2NF is broken. ProductName and Category depend on
+Sku, which is not a key: a **transitive dependency**, so 3NF is broken. That design causes three
+anomalies:
+
+| Anomaly | What goes wrong in the wide table | How the ApexPost schema prevents it |
+| --- | --- | --- |
+| **Update** | A product is renamed or recategorised, or a branch moves region. Every row that repeats it must be updated. Miss one (a concurrent insert, a `WHERE` that is slightly wrong) and the same SKU has two names or the same branch sits in two regions, so the regional top-10 report (sql/02) splits it. | The name and category live once in `Products`, the region once in `Branches`. Lines reference `Sku` and `BranchCode` through foreign keys, so one `UPDATE` of one row is the whole change. |
+| **Insert** | A new product, or a newly opened branch, cannot be recorded until it has been sold, because there is no transaction row to hold it. Stock for an unsold product has nowhere to live, and a branch with no sales cannot appear in the daily report. | `Products`, `Branches` and `BranchStock` are their own tables. A branch exists before its first sale, and the daily report (sql/01) starts `FROM Branches` with a `LEFT JOIN` to show it with zeros. |
+| **Delete** | Voiding and purging the only sale of a product, or the last sale of a closing branch, also deletes the only record of that product's category and price, or of the branch's name and region. Facts about one thing disappear because of another. | Deleting a sale touches only `CounterTransactions` and its owned rows (`TransactionLines`, `Payments` cascade inside the aggregate). Master data is `RESTRICT` (ADR-W3-01), and the app role cannot delete transactions at all. |
+
+The deliberate copies listed above (line `UnitPrice`, `Description`, `TaxAmount`, the stored
+totals) are **not** update anomalies. They record what was charged at that moment, a historical
+fact that must not change when the catalogue does. Changing the catalogue price must not rewrite
+old receipts.
+
 ### 4.3 Constraints
 
 All constraints are named (`PK_`, `FK_`, `UQ_`, `CK_`, `DF_`), so errors and plans are readable:
@@ -194,6 +220,7 @@ All constraints are named (`PK_`, `FK_`, `UQ_`, `CK_`, `DF_`), so errors and pla
 | `AddReportingIndexes` | The five reporting indexes measured in PERFORMANCE.md |
 | `AddStoredProcedures` | `usp_DailyBranchSales`, `usp_LowStockReport`, `usp_AdjustStock`, the `apexpost_app` role |
 | `FixInactiveStaffSeed` | Data fix found by the SQL Server tests: `HasData` omits a `false` value for a column with a database default (`DF_Staff_IsActive = 1`), so the inactive demo clerk was seeded as active. The migration sets it back; the in-memory fakes could not reveal this |
+| `HardenAppRoleAndAdjustStock` | Review fixes, no model change: `usp_AdjustStock` v2 (its CATCH checks `XACT_STATE()`); `apexpost_app` v2 (per-table grants instead of a schema-wide grant). `Down` restores both v1 scripts, which are kept byte for byte in `Sql/History` so the older migration still deploys exactly what it originally deployed |
 
 `database/schema.sql` is the **idempotent** script (`dotnet ef migrations script --idempotent`).
 Procedure bodies are wrapped in `EXEC(N'...')` so they can sit inside the script's
@@ -216,7 +243,14 @@ migrations at start-up only in Development (`Database:MigrateOnStartup`).
   the rows a sale needs in one query; `ISyncInboxRepository.FindAsync(device, localId)` backs idempotency.
 * `UnitOfWork` translates provider errors into domain language: `DbUpdateConcurrencyException`
   becomes `ConcurrencyConflictException` (HTTP **409**), unique-key violations 2601/2627 become
-  `DuplicateKeyException`, a CHECK violation becomes a `BusinessRuleViolationException`.
+  `DuplicateKeyException` (also HTTP **409**, code `DUPLICATE_KEY`; the message names the
+  constraint, never the duplicate value, which may be an e-mail), a CHECK violation becomes a
+  `BusinessRuleViolationException`.
+* HTTP mapping (`DomainExceptionMapper`, one place for filters and the exception handler):
+  **400** invalid input (`VALIDATION_FAILED`) or a broken business rule (its rule code, e.g.
+  `STOCK_INSUFFICIENT`); **403** forbidden; **404** not found; **409** concurrency conflict or
+  duplicate key; **500** anything unexpected, with no details leaked. On HTML form posts the same
+  domain exceptions redirect back with the message (Post/Redirect/Get) instead.
 
 ### 5.2 Concurrency (ADR-W3-06)
 
@@ -247,10 +281,32 @@ every interpolated value becomes a `SqlParameter`. Nothing is concatenated.
 | --- | --- | --- |
 | `usp_DailyBranchSales` | Fixed report contract shared by the dashboard and finance; conditional aggregate tuned once on the `BusinessDate` index | `ReportQueries.GetBranchSalesSplitAsync` |
 | `usp_LowStockReport` | Optional parameters; `OPTION (RECOMPILE)` lets the optimizer seek for one branch and scan for all (trade-off documented in the procedure) | `ReportQueries.GetLowStockAsync` |
-| `usp_AdjustStock` | Read-check-write plus history insert must be atomic under concurrency: `XACT_ABORT`, `UPDLOCK, HOLDLOCK`, `TRY/CATCH`, `THROW 50001/50002/50003` mapped to domain exceptions | `StockAdjustmentProcedure` → `InventoryService.AdjustAsync` |
+| `usp_AdjustStock` | Read-check-write plus history insert must be atomic under concurrency: `XACT_ABORT`, `UPDLOCK, HOLDLOCK`, `TRY/CATCH` with **`XACT_STATE()`** (-1 doomed / 1 committable / 0 none; `@@TRANCOUNT` cannot tell doomed from committable), `THROW 50001/50002/50003` mapped to domain exceptions | `StockAdjustmentProcedure` → `InventoryService.AdjustAsync` |
 
-The web app's database user should be a member of `apexpost_app` (created by the migration):
-`EXECUTE` on the three procedures plus `SELECT/INSERT/UPDATE` on the tables, no DDL.
+The web app's database user should be a member of `apexpost_app` (created by the migrations,
+`Sql/Security/AppRole.sql`). It grants **per table**, only what the code does. It can only read
+reference data (roles, categories, zones, rates) and gets SELECT/INSERT/UPDATE on master and
+operational tables. DELETE is granted only on `TransactionLines` (removing a line from an open
+basket). Payments, the audit trail, sync inbox and conflicts are append-only, and
+`StockAdjustments` is written only through `usp_AdjustStock`. The role has EXECUTE on the three
+procedures, no DDL, and no access to `__EFMigrationsHistory`. A new table gets no access until it
+is granted. DENYs keep history append-only even if a broad grant is ever added by mistake.
+
+### 5.6 Standalone SQL (Part B): reports, a T-SQL transaction, blocking and deadlocks
+
+The `sql/` folder (see [sql/README.md](sql/README.md)) holds T-SQL that runs directly in SSMS
+against `ApexPostDb`:
+
+* the reports, as plain queries: daily sales by branch (LEFT JOIN, branches without sales
+  included), **top 10 products by revenue per region** (`ROW_NUMBER() OVER (PARTITION BY ...)`),
+  shipping volume (`GROUPING SETS`) and the money-order audit;
+* a **sale as one T-SQL transaction** (`SET XACT_ABORT ON`, `BEGIN TRAN`, `TRY/CATCH`,
+  `XACT_STATE()`, `THROW`) with success and three failure scenarios;
+* an **SSMS blocking demo** in three windows (blocker, blocked reader/writer, DMV monitor);
+* [sql/DEADLOCKS.md](sql/DEADLOCKS.md), the **deadlock-avoidance note**: consistent lock order,
+  `UPDLOCK` for read-to-write, short transactions, `rowversion`, matching indexes, retry on 1205.
+
+`SqlFolderScriptTests` runs scripts 01–05 on a migrated test database.
 
 ### 5.5 DI lifetimes (ADR-W3-04)
 
@@ -395,7 +451,7 @@ Details, and the clerk id in each sale is re-validated against the branch.
 | No secrets in source control | Connection string, partner keys and device keys in user-secrets (`ApexPost.MVC`, `ApexPost.CounterTerminal`) or environment variables; `appsettings.json` holds empty placeholders |
 | No string-concatenated SQL | EF LINQ, `SqlQuery`/`ExecuteSqlAsync` with `FormattableString`, `SqlParameter` in scripts, `$parameters` in SQL++; dynamic DDL in test/perf scripts uses `QUOTENAME(@name)` server-side |
 | Identity documents masked everywhere | Domain keeps `MaskedDocumentNumber`; table has only `DocumentLast4`; audit filter whitelists fields; terminal never stores identity data; tests search SQL, audit and Couchbase for the full number |
-| Least privilege | `apexpost_app` role: EXECUTE on 3 procedures, DML on tables, no DDL |
+| Least privilege | `apexpost_app` role: per-table grants (read-only reference data, DELETE only on basket lines, append-only payments/audit/sync), EXECUTE on 3 procedures, no DDL; checked per permission by `ReviewHardeningTests` |
 | Fictional data | Seed, historical generator and perf generator produce invented names and amounts only |
 
 ## 8. Architecture Decision Records (Week 3)
@@ -487,9 +543,9 @@ every file and hide the real changes in review. **Consequences**: readers need t
 
 | Project | What it proves | Needs |
 | --- | --- | --- |
-| `ApexPost.Tests` (134) | Week 2 rules on fakes (the query fakes reject overlapping calls in one request, like EF Core); over-posting (extra form/JSON fields such as `Id`, `Status`, `Fee`, `BranchCode`, `PasswordHash` are ignored; route ids bind from the route only); the real terminal syncing with the real web app in memory (offline sale → reconnect → duplicate push); one commit per use case, none on failure; offline idempotency and C1/C2/C3; `/api/sync` auth, branch binding, 400/401/429 Problem Details; model snapshot matches migrations | nothing |
+| `ApexPost.Tests` (143) | HTTP mapping of every domain exception (400 rule/validation, 409 concurrency and duplicate key, constraint name kept, value dropped); Week 2 rules on fakes (the query fakes reject overlapping calls in one request, like EF Core); over-posting (extra form/JSON fields such as `Id`, `Status`, `Fee`, `BranchCode`, `PasswordHash` are ignored; route ids bind from the route only); the real terminal syncing with the real web app in memory (offline sale → reconnect → duplicate push); one commit per use case, none on failure; offline idempotency and C1/C2/C3; `/api/sync` auth, branch binding, 400/401/429 Problem Details; model snapshot matches migrations | nothing |
 | `ApexPost.CounterTerminal.Tests` (31) | Couchbase CRUD, SQL++ (incl. injection attempt), persistence across reopen, field-level merge, listener once, offline rules, sync worker with network failure, lost response, rejection, backoff | nothing (real Couchbase Lite in a temp folder) |
-| `ApexPost.IntegrationTests` (29) | Week 2 rule tests on SQL Server; every query-service method once on seeded data; historical seeder (unique references, runs once); migrations; aggregate round trip; rollback; rowversion conflict; parallel clerks; CHECK; masking; three procedures + error mapping; racing pushes; N+1 command count; `ToQueryString` | SQL Server / LocalDB (`APEXPOST_TEST_SQL`) |
+| `ApexPost.IntegrationTests` (46) | Week 2 rule tests on SQL Server; every query-service method once on seeded data; historical seeder (unique references, runs once); migrations (incl. `HardenAppRoleAndAdjustStock` down and up); aggregate round trip; rollback; rowversion conflict; parallel clerks; CHECK; masking; three procedures + error mapping; `usp_AdjustStock` uses `XACT_STATE()`; duplicate key → `DuplicateKeyException`; app role permission matrix; racing pushes; N+1 command count; `ToQueryString` for three queries; the `sql/` scripts 01–05 | SQL Server / LocalDB (`APEXPOST_TEST_SQL`); the 3 `ToQueryString` tests need no server |
 
 ## 11. Known limitations
 

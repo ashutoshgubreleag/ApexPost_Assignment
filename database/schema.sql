@@ -1527,3 +1527,186 @@ END;
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [dbo].[__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261103090000_HardenAppRoleAndAdjustStock'
+)
+BEGIN
+    EXEC(N'/*
+      usp_AdjustStock: manual stock adjustment (receive or write off) plus its history row.
+
+      Why a procedure (ADR-W3-03): the read-check-write and the history insert must be atomic and
+      must hold the right lock. UPDLOCK + HOLDLOCK on the stock row serialises concurrent adjustments
+      of the same SKU at the same branch without blocking other rows; XACT_ABORT guarantees that any
+      error (including a CHECK violation) dooms the transaction, and the CATCH block checks
+      XACT_STATE() before rolling back (version 2; version 1 checked @@TRANCOUNT only, see
+      Sql/History). Done in LINQ it would take two round trips inside an explicit transaction and
+      could not take the update lock on the first read.
+      Called from EF Core with SqlQuery and an interpolated FormattableString (parameters only).
+    */
+    CREATE OR ALTER PROCEDURE dbo.usp_AdjustStock
+        @BranchCode varchar(10),
+        @Sku        varchar(20),
+        @Delta      int,
+        @Reason     nvarchar(200),
+        @ChangedBy  varchar(50)
+    AS
+    BEGIN
+        SET NOCOUNT ON;
+        SET XACT_ABORT ON;
+
+        IF @BranchCode IS NULL OR @Sku IS NULL OR @Delta IS NULL OR @Delta = 0
+            THROW 50001, N''@BranchCode, @Sku and a non-zero @Delta are required.'', 1;
+        IF @Delta NOT BETWEEN -1000 AND 1000
+            THROW 50001, N''@Delta must be between -1000 and 1000.'', 1;
+        IF NULLIF(LTRIM(RTRIM(@Reason)), N'''') IS NULL
+            THROW 50001, N''@Reason is required.'', 1;
+        IF NULLIF(LTRIM(RTRIM(@ChangedBy)), '''') IS NULL
+            THROW 50001, N''@ChangedBy is required.'', 1;
+
+        BEGIN TRY
+            BEGIN TRANSACTION;
+
+            DECLARE @Current int;
+
+            SELECT @Current = QuantityOnHand
+            FROM dbo.BranchStock WITH (UPDLOCK, HOLDLOCK)
+            WHERE BranchCode = @BranchCode AND Sku = @Sku;
+
+            IF @Current IS NULL
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM dbo.Branches WHERE BranchCode = @BranchCode)
+                   OR NOT EXISTS (SELECT 1 FROM dbo.Products WHERE Sku = @Sku)
+                    THROW 50002, N''Unknown branch or SKU.'', 1;
+                IF @Delta < 0
+                    THROW 50003, N''There is no stock of this SKU at this branch to write off.'', 1;
+
+                INSERT dbo.BranchStock (BranchCode, Sku, QuantityOnHand, ReorderThreshold, UpdatedAtUtc, CreatedBy)
+                VALUES (@BranchCode, @Sku, @Delta, 5, SYSUTCDATETIME(), @ChangedBy);
+                SET @Current = 0;
+            END
+            ELSE
+            BEGIN
+                IF @Current + @Delta < 0
+                    THROW 50003, N''The adjustment would take stock below zero.'', 1;
+
+                UPDATE dbo.BranchStock
+                SET QuantityOnHand = QuantityOnHand + @Delta,
+                    UpdatedAtUtc   = SYSUTCDATETIME(),
+                    ModifiedAtUtc  = SYSUTCDATETIME()
+                WHERE BranchCode = @BranchCode AND Sku = @Sku;
+            END;
+
+            INSERT dbo.StockAdjustments (BranchCode, Sku, Delta, QuantityAfter, Reason, ChangedBy)
+            VALUES (@BranchCode, @Sku, @Delta, @Current + @Delta, @Reason, @ChangedBy);
+
+            DECLARE @AdjustmentId int = SCOPE_IDENTITY();
+            COMMIT TRANSACTION;
+
+            SELECT @Current + @Delta AS QuantityAfter, @AdjustmentId AS StockAdjustmentId;
+        END TRY
+        BEGIN CATCH
+            -- XACT_STATE() says whether the transaction can still be committed; @@TRANCOUNT only says
+            -- that one is open:
+            --   -1  doomed: an error occurred and, with XACT_ABORT ON, SQL Server allows only ROLLBACK;
+            --    1  active and committable: still rolled back, because the stock change and its history
+            --       row are all-or-nothing;
+            --    0  no transaction (the error came before BEGIN TRANSACTION): nothing to roll back.
+            IF XACT_STATE() <> 0
+                ROLLBACK TRANSACTION;
+
+            THROW; -- re-raise the original error (number, message, line) to the caller
+        END CATCH;
+    END;
+    ');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [dbo].[__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261103090000_HardenAppRoleAndAdjustStock'
+)
+BEGIN
+    /*
+      Least-privilege database role for the web application (ADR-W3-03, README "Security"), version 2.
+
+      The app login is a member of apexpost_app only. Version 1 granted SELECT, INSERT, UPDATE on the
+      whole dbo schema and then denied a few things; version 2 grants per table, only what the code
+      actually does (checked against the repositories and SqlAuditStore), so a new table gets no
+      access until someone decides it should. The role:
+        - cannot change the schema (no DDL), is not db_owner;
+        - only reads reference data (roles, categories, zones, rates);
+        - can never delete history or the audit trail, and never update payments, audit rows,
+          sync inbox rows or stock history;
+        - deletes only basket lines (removing an item from an OPEN transaction);
+        - writes StockAdjustments only through usp_AdjustStock (ownership chaining: the procedure and
+          the table are both owned by dbo, so EXECUTE is enough).
+      Re-runnable: REVOKE, GRANT and DENY are idempotent. Migrations are applied by a separate
+      deployment login (db_ddladmin) or by an administrator, never by this role.
+    */
+    IF DATABASE_PRINCIPAL_ID(N'apexpost_app') IS NULL
+        CREATE ROLE apexpost_app AUTHORIZATION dbo;
+
+    -- Version 1's schema-wide grant is replaced by the per-table grants below.
+    REVOKE SELECT, INSERT, UPDATE ON SCHEMA::dbo FROM apexpost_app;
+
+    -- Reference data: read only.
+    GRANT SELECT ON OBJECT::dbo.Roles             TO apexpost_app;
+    GRANT SELECT ON OBJECT::dbo.ProductCategories TO apexpost_app;
+    GRANT SELECT ON OBJECT::dbo.ShippingZones     TO apexpost_app;
+    GRANT SELECT ON OBJECT::dbo.ShippingRates     TO apexpost_app;
+
+    -- Master data maintained in the admin screens (deactivate, never delete).
+    GRANT SELECT, INSERT, UPDATE ON OBJECT::dbo.Branches TO apexpost_app;
+    GRANT SELECT, INSERT, UPDATE ON OBJECT::dbo.Counters TO apexpost_app;
+    GRANT SELECT, INSERT, UPDATE ON OBJECT::dbo.Staff    TO apexpost_app;
+    GRANT SELECT, UPDATE         ON OBJECT::dbo.Products TO apexpost_app;  -- price revisions; products are seeded
+
+    -- Day-to-day counter work.
+    GRANT SELECT, INSERT, UPDATE         ON OBJECT::dbo.CounterTransactions TO apexpost_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON OBJECT::dbo.TransactionLines    TO apexpost_app;  -- remove a line from an open basket
+    GRANT SELECT, INSERT                 ON OBJECT::dbo.Payments            TO apexpost_app;
+    GRANT SELECT, INSERT, UPDATE         ON OBJECT::dbo.BranchStock         TO apexpost_app;
+    GRANT SELECT                         ON OBJECT::dbo.StockAdjustments    TO apexpost_app;  -- written by usp_AdjustStock only
+    GRANT SELECT, INSERT, UPDATE         ON OBJECT::dbo.Shipments           TO apexpost_app;
+    GRANT SELECT, INSERT, UPDATE         ON OBJECT::dbo.MoneyOrders         TO apexpost_app;
+    GRANT SELECT, INSERT                 ON OBJECT::dbo.IdentityVerifications TO apexpost_app;
+    GRANT SELECT, INSERT                 ON OBJECT::dbo.Notifications       TO apexpost_app;
+
+    -- Audit trail and offline sync: append-only.
+    GRANT SELECT, INSERT ON OBJECT::dbo.AuditEntries  TO apexpost_app;
+    GRANT SELECT, INSERT ON OBJECT::dbo.SyncInbox     TO apexpost_app;
+    GRANT SELECT, INSERT ON OBJECT::dbo.SyncConflicts TO apexpost_app;
+
+    -- Stored procedures.
+    GRANT EXECUTE ON OBJECT::dbo.usp_DailyBranchSales TO apexpost_app;
+    GRANT EXECUTE ON OBJECT::dbo.usp_LowStockReport   TO apexpost_app;
+    GRANT EXECUTE ON OBJECT::dbo.usp_AdjustStock      TO apexpost_app;
+
+    -- Belt and braces: history and the audit trail stay append-only even if a broader grant is ever
+    -- added by mistake (DENY wins over GRANT).
+    DENY UPDATE, DELETE ON OBJECT::dbo.AuditEntries     TO apexpost_app;
+    DENY UPDATE, DELETE ON OBJECT::dbo.StockAdjustments TO apexpost_app;
+    DENY UPDATE, DELETE ON OBJECT::dbo.SyncInbox        TO apexpost_app;
+    DENY DELETE ON OBJECT::dbo.CounterTransactions      TO apexpost_app;
+    DENY DELETE ON OBJECT::dbo.Payments                 TO apexpost_app;
+
+    -- Example (run once per environment, password from your secret store, never from source control):
+    --   CREATE LOGIN apexpost_web WITH PASSWORD = '<from secret store>';
+    --   CREATE USER apexpost_web FOR LOGIN apexpost_web;
+    --   ALTER ROLE apexpost_app ADD MEMBER apexpost_web;
+
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [dbo].[__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261103090000_HardenAppRoleAndAdjustStock'
+)
+BEGIN
+    INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261103090000_HardenAppRoleAndAdjustStock', N'10.0.14');
+END;
+
+COMMIT;
+GO
+

@@ -4,8 +4,10 @@
   Why a procedure (ADR-W3-03): the read-check-write and the history insert must be atomic and
   must hold the right lock. UPDLOCK + HOLDLOCK on the stock row serialises concurrent adjustments
   of the same SKU at the same branch without blocking other rows; XACT_ABORT guarantees that any
-  error (including a CHECK violation) rolls the whole thing back. Done in LINQ it would take two
-  round trips inside an explicit transaction and could not take the update lock on the first read.
+  error (including a CHECK violation) dooms the transaction, and the CATCH block checks
+  XACT_STATE() before rolling back (version 2; version 1 checked @@TRANCOUNT only, see
+  Sql/History). Done in LINQ it would take two round trips inside an explicit transaction and
+  could not take the update lock on the first read.
   Called from EF Core with SqlQuery and an interpolated FormattableString (parameters only).
 */
 CREATE OR ALTER PROCEDURE dbo.usp_AdjustStock
@@ -70,7 +72,15 @@ BEGIN
         SELECT @Current + @Delta AS QuantityAfter, @AdjustmentId AS StockAdjustmentId;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
+        -- XACT_STATE() says whether the transaction can still be committed; @@TRANCOUNT only says
+        -- that one is open:
+        --   -1  doomed: an error occurred and, with XACT_ABORT ON, SQL Server allows only ROLLBACK;
+        --    1  active and committable: still rolled back, because the stock change and its history
+        --       row are all-or-nothing;
+        --    0  no transaction (the error came before BEGIN TRANSACTION): nothing to roll back.
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+
+        THROW; -- re-raise the original error (number, message, line) to the caller
     END CATCH;
 END;

@@ -28,7 +28,9 @@ public sealed class UnitOfWork(ApexPostDbContext db) : IUnitOfWork
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 } sql)
         {
-            throw new DuplicateKeyException(sql.Message, ex);
+            // 2627 = UNIQUE/PRIMARY KEY constraint, 2601 = unique index. Only the constraint name
+            // travels upwards; the duplicate value (e.g. an e-mail) stays in the server log.
+            throw new DuplicateKeyException(SqlErrorText.ConstraintName(sql.Message), ex);
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 547 } sql && sql.Message.Contains("CHECK constraint", StringComparison.OrdinalIgnoreCase))
         {
@@ -58,4 +60,19 @@ public sealed class UnitOfWork(ApexPostDbContext db) : IUnitOfWork
     }
 
     public void DiscardChanges() => db.ChangeTracker.Clear();
+}
+
+/// <summary>Reads the constraint or index name out of a SQL Server error message.</summary>
+public static partial class SqlErrorText
+{
+    public static string ConstraintName(string message)
+    {
+        // 2627: "Violation of UNIQUE KEY constraint 'UQ_Staff_Email'. Cannot insert duplicate key ..."
+        // 2601: "Cannot insert duplicate key row in object 'dbo.Staff' with unique index 'IX_...'. ..."
+        var match = NamePattern().Match(message ?? string.Empty);
+        return match.Success ? match.Groups["name"].Value : "unique key";
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?:constraint|unique index) '(?<name>[^']+)'", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex NamePattern();
 }

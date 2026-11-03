@@ -131,7 +131,7 @@
     "Fields": {
       "PaymentMethod": "Card"
     },
-    "StatusCode": 422,
+    "StatusCode": 400,
     "Outcome": "Rejected",
     "Error": "MONEY_ORDER_ID_REQUIRED",
     "DurationMs": 5,
@@ -290,10 +290,10 @@
     "Fields": {
       "CounterTerminalId": "1"
     },
-    "StatusCode": 422,
+    "StatusCode": 400,
     "Outcome": "Rejected",
     "Error": "BRANCH_CLOSED",
     "DurationMs": 12,
     "CorrelationId": "495fd339b8f64d75a64caddbcd9b3409"
   }
-]
+]

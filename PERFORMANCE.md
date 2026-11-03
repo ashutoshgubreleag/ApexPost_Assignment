@@ -175,6 +175,44 @@ ORDER BY [c].[OpenedAtUtc] DESC
   `ToQueryString` displays parameter values; the statement itself never inlines them). The line
   count and the last payment method are correlated sub-queries in the same statement, not extra
   round trips.
+
+Two more queries, captured the same way by `ToQueryStringEvidenceTests` (they need only the SQL
+Server provider, not a server) and committed in `database/querystring/`:
+
+**Q2: branch stock** (`CatalogQueries.StockForBranchQuery`): a LINQ `join` becomes one `INNER JOIN`.
+Only the five columns `StockDto` needs are read (not `UnitPrice` or the audit columns), and the
+filter on `@branch` seeks `UQ_BranchStock_Branch_Sku`.
+
+```sql
+DECLARE @branch varchar(10) = 'BR-001';
+
+SELECT [b].[BranchCode], [b].[Sku], [p].[Name], [b].[QuantityOnHand], [b].[ReorderThreshold]
+FROM [dbo].[BranchStock] AS [b]
+INNER JOIN [dbo].[Products] AS [p] ON [b].[Sku] = [p].[Sku]
+WHERE [b].[BranchCode] = @branch
+ORDER BY [p].[Name]
+```
+
+**Q3: money-order audit list** (`ReportQueries.MoneyOrderAuditListQuery`): the inclusive dates
+become a **half-open UTC range** on the raw column (`>= @startOffset AND < @endOffset`), so the
+predicate is SARGable. `Take(500)` becomes `TOP(@p)`. With a branch given, EF Core 10 drops the
+`@branch IS NULL OR ...` branch of the predicate from the SQL. `'Pending'` is the only literal: it is
+an enum constant from the code, never input.
+
+```sql
+DECLARE @p int = 500;
+DECLARE @startOffset datetime2 = '2026-10-01T00:00:00.0000000Z';
+DECLARE @endOffset datetime2 = '2026-11-01T00:00:00.0000000Z';
+DECLARE @branch varchar(10) = 'BR-001';
+
+SELECT TOP(@p) [m].[Id], [m].[SerialNumber], [m].[TransactionId], [m].[BranchCode], [m].[Amount], [m].[Fee], [m].[Sender], [m].[Recipient], [m].[IdentityVerificationId], [m].[Status], [m].[RequestedAtUtc], [m].[IssuedAtUtc]
+FROM [dbo].[MoneyOrders] AS [m]
+WHERE [m].[Status] <> 'Pending' AND [m].[RequestedAtUtc] >= @startOffset AND [m].[RequestedAtUtc] < @endOffset AND [m].[BranchCode] = @branch
+ORDER BY [m].[RequestedAtUtc] DESC
+```
+
+All three statements are parameterized. The tests assert the shape (projection, join, filter,
+order, `TOP(@p)`) and that no input value appears in the statement text.
 * `Read_queries_use_a_fixed_number_of_commands_no_n_plus_one` counts commands with an interceptor:
   the list of 5 transactions is **1** command; the details view is **6** commands (3 split queries
   for header/lines/payments, then shipments, money orders and verifications) for a 1-line and a

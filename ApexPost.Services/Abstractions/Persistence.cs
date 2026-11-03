@@ -1,4 +1,5 @@
 using ApexPost.Models.Domain;
+using ApexPost.Models.Exceptions;
 using ApexPost.Models.ValueObjects;
 
 namespace ApexPost.Services.Abstractions;
@@ -133,7 +134,26 @@ public interface ISyncInboxRepository
 }
 
 /// <summary>
-/// A unique index rejected an insert (e.g. the same offline sale pushed twice at the same moment).
-/// Raised by the persistence layer so the application can treat it as "already done".
+/// A UNIQUE constraint or unique index rejected the change (SQL Server errors 2601/2627): for
+/// example two requests creating the same staff e-mail at the same moment, or the same offline sale
+/// pushed twice. Raised by the persistence layer instead of the SqlException, so nothing above it
+/// depends on SqlClient. It is a <see cref="DomainException"/>, so the web layer answers
+/// <b>409 Conflict</b> (API) or shows the message on the form, never a 500. The message names the
+/// constraint only, never the duplicate value (which may be personal data such as an e-mail).
+/// The sync path catches it and returns the earlier result instead (idempotent push).
 /// </summary>
-public sealed class DuplicateKeyException(string message, Exception? innerException = null) : Exception(message, innerException);
+public sealed class DuplicateKeyException : DomainException
+{
+    public DuplicateKeyException(string constraintName, Exception? innerException = null)
+        : base($"A record with the same unique value already exists ({constraintName}). Nothing was saved; reload and try again.")
+    {
+        ConstraintName = constraintName;
+        Cause = innerException;
+    }
+
+    /// <summary>Name of the violated constraint or index, e.g. <c>UQ_Staff_Email</c>.</summary>
+    public string ConstraintName { get; }
+
+    /// <summary>The provider exception, kept for logging (not shown to users).</summary>
+    public Exception? Cause { get; }
+}

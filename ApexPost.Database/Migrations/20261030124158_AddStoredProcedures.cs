@@ -8,18 +8,20 @@ namespace ApexPost.Database.Migrations
     /// <summary>
     /// Deploys the stored procedures (CREATE OR ALTER, so re-running is safe) and the
     /// least-privilege application role. The T-SQL lives in Sql/*.sql, reviewed like any code.
+    /// Uses the version-1 scripts (Sql/History) so it keeps deploying exactly what it deployed
+    /// originally; 20261103090000_HardenAppRoleAndAdjustStock upgrades both objects.
     /// </summary>
     public partial class AddStoredProcedures : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            foreach (var procedure in SqlScripts.Procedures)
+            foreach (var procedure in SqlScripts.InitialProcedures)
             {
                 migrationBuilder.Sql(SqlScripts.ReadAsDeferredBatch(procedure));
             }
 
-            migrationBuilder.Sql(SqlScripts.Read("AppRole"));
+            migrationBuilder.Sql(SqlScripts.Read(SqlScripts.AppRoleV1));
         }
 
         /// <inheritdoc />

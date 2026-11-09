@@ -290,13 +290,16 @@ public sealed class SecurityTests : IClassFixture<ApiFactory>
     // ---- /dev/token ----
 
     [Fact]
-    public async Task DevToken_IsNotMappedOutsideDevelopment_Returns404()
+    public async Task DevToken_IsNotMappedOutsideDevelopment_IssuesNoToken()
     {
         using var client = Anonymous();
 
         var response = await client.PostAsync("/dev/token", Json("""{"courierId":"C-1001","role":"Courier"}"""));
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // The route does not exist outside Development. The deny-by-default fallback policy may answer 401 before routing says 404;
+        // either way no token is issued.
+        Assert.True(response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Unauthorized, $"was {(int)response.StatusCode}");
+        Assert.DoesNotContain("accessToken", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

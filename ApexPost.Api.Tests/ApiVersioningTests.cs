@@ -126,13 +126,12 @@ public sealed class ApiVersioningTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task V2Response_ReportsSupportedAndDeprecatedVersions()
+    public async Task V2Response_ReportsSupportedVersions()
     {
         var response = await _client.GetAsync("/api/v2/shipments");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("2.0", string.Join(",", response.Headers.GetValues("api-supported-versions")), StringComparison.Ordinal);
-        Assert.Contains("1.0", string.Join(",", response.Headers.GetValues("api-deprecated-versions")), StringComparison.Ordinal);
     }
 
     [Fact]

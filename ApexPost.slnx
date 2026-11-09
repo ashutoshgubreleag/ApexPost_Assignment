@@ -23,4 +23,7 @@
   <Project Path="ApexPost.Tests/ApexPost.Tests.csproj" />
   <Project Path="ApexPost.CounterTerminal.Tests/ApexPost.CounterTerminal.Tests.csproj" />
   <Project Path="ApexPost.IntegrationTests/ApexPost.IntegrationTests.csproj" />
+  <Project Path="ApexPost.Courier.Offline/ApexPost.Courier.Offline.csproj" />
+  <Project Path="ApexPost.Courier.Offline.Harness/ApexPost.Courier.Offline.Harness.csproj" />
+  <Project Path="ApexPost.Courier.Offline.Tests/ApexPost.Courier.Offline.Tests.csproj" />
 </Solution>

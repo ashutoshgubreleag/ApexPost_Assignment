@@ -33,3 +33,5 @@ artifacts/
 # Delivery helpers (bundles and their scripts) used to move commits to the dev PC
 /get-week3.ps1
 /update-week3*.ps1
+
+courier-data/

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Offline-first courier store (Week 4, Part A). Layers inside the library:
+      Domain (scan model + ports, no Couchbase types) -> Application (OutboxService) ->
+      Infrastructure/Couchbase (Couchbase Lite database, repository, change listener).
+    Deliberately no MAUI dependency so the same library is used by the console harness, the tests
+    and (Part D) the MAUI courier app.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Couchbase.Lite" Version="4.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ApexPost.Courier.Offline.Tests" />
+  </ItemGroup>
+</Project>

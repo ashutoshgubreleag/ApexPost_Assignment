@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    .NET MAUI courier app (Week 4, Part D). Needs the MAUI workload:  dotnet workload install maui
+    Not part of ApexPost.slnx on purpose: a machine without the workload could not build the solution. Build it explicitly.
+  -->
+  <PropertyGroup>
+    <!-- Directory.Build.props sets one TargetFramework; clear it so TargetFrameworks (plural) applies. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+
+    <OutputType>Exe</OutputType>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <RootNamespace>ApexPost.Courier</RootNamespace>
+    <ApplicationTitle>ApexPost Courier</ApplicationTitle>
+    <ApplicationId>com.apexpost.courier</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <WindowsPackageType>None</WindowsPackageType>
+    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-android'))">24.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.17763.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.17763.0</TargetPlatformMinVersion>
+
+    <!-- The MAUI SDK raises platform warnings the rest of the solution never sees; do not let them fail the build. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ApexPost.Courier.Core\ApexPost.Courier.Core.csproj" />
+    <ProjectReference Include="..\ApexPost.Courier.Offline\ApexPost.Courier.Offline.csproj" />
+  </ItemGroup>
+</Project>

@@ -6,6 +6,8 @@
     <File Path="PERFORMANCE.md" />
     <File Path="CONFLICTS.md" />
     <File Path="docs/DEMO.md" />
+    <File Path="RESILIENCE.md" />
+    <File Path="docs/DEMO-VIDEO-SCRIPT.md" />
     <File Path="AUDIT-SAMPLE.json" />
     <File Path="ApexPost-Postman-Collection.json" />
     <File Path="database/schema.sql" />
@@ -35,4 +37,6 @@
   <Project Path="ApexPost.Courier.Offline/ApexPost.Courier.Offline.csproj" />
   <Project Path="ApexPost.Courier.Offline.Harness/ApexPost.Courier.Offline.Harness.csproj" />
   <Project Path="ApexPost.Courier.Offline.Tests/ApexPost.Courier.Offline.Tests.csproj" />
+  <Project Path="ApexPost.Courier.Core/ApexPost.Courier.Core.csproj" />
+  <Project Path="ApexPost.Courier.Core.Tests/ApexPost.Courier.Core.Tests.csproj" />
 </Solution>

@@ -1,0 +1,1229 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "ApexPost Logistics API",
+    "description": "**Version 1 is deprecated.** It still works but receives no new features. Use version 2 (see VERSIONING.md for the migration guide). Courier shipment tracking: shipments, status changes and idempotent offline scan upload.",
+    "contact": {
+      "name": "ApexPost API team",
+      "email": "api-team@apexpost.example"
+    },
+    "version": "1.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5299/"
+    }
+  ],
+  "paths": {
+    "/api/v1/shipments/{trackingNumber}/scans": {
+      "post": {
+        "tags": [
+          "Scans"
+        ],
+        "summary": "Uploads a batch of offline scans. Safe to retry.",
+        "description": "Each scan carries the scan id created on the courier's device. A scan id that is already stored is\r\ncounted in `duplicatesSkipped` and not stored again, so a retry after a dropped connection\r\nnever creates duplicates. Scans that cannot be stored are listed in `rejected` with a reason.",
+        "operationId": "UploadScans",
+        "parameters": [
+          {
+            "name": "trackingNumber",
+            "in": "path",
+            "description": "Tracking number, for example APX-10000001.",
+            "required": true,
+            "schema": {
+              "pattern": "^APX-\\d{8}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Cancelled when the caller disconnects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanUploadRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The batch was processed; the body says how many scans were accepted, skipped as duplicates and rejected.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanUploadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanUploadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation (for example a scan in the future, or a Delivered scan without a signature name).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No shipment has this tracking number.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The request is not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          },
+          "403": {
+            "description": "The caller's role is not allowed (or, for scan upload, the courierId does not match the token)."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      },
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "summary": "Gets the scan history of a shipment, oldest first.",
+        "operationId": "GetScans",
+        "parameters": [
+          {
+            "name": "trackingNumber",
+            "in": "path",
+            "description": "Tracking number, for example APX-10000001.",
+            "required": true,
+            "schema": {
+              "pattern": "^APX-\\d{8}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scans (empty when there are none yet).",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScanResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScanResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScanResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No shipment has this tracking number.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      }
+    },
+    "/api/v1/shipments": {
+      "get": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Lists shipments, newest first, with optional filters.",
+        "description": "Paged and filtered list of shipments. pageSize defaults to 20 and is capped at 50.",
+        "operationId": "ListShipmentsV1",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number, starting at 1.",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "Items per page. Default 20, maximum 50 (larger values are reduced to 50).",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "format": "int32",
+              "default": 20
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Only shipments in this status.",
+            "schema": {
+              "$ref": "#/components/schemas/TrackingStatus"
+            }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "description": "Only shipments delivered to this city (case-insensitive).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of shipments.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentPageResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentPageResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentPageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query value could not be understood (for example an unknown status).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Creates a shipment in status Created.",
+        "operationId": "CreateShipmentV1",
+        "requestBody": {
+          "description": "Cancelled when the caller disconnects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShipmentRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShipmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created. The Location header points at the new shipment.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation (ValidationProblemDetails lists every field).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A shipment with this tracking number already exists.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The request is not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      }
+    },
+    "/api/v1/shipments/{trackingNumber}": {
+      "get": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Gets one shipment.",
+        "operationId": "GetShipmentV1",
+        "parameters": [
+          {
+            "name": "trackingNumber",
+            "in": "path",
+            "description": "Tracking number, for example APX-10000001.",
+            "required": true,
+            "schema": {
+              "pattern": "^APX-\\d{8}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The shipment.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No shipment has this tracking number.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Replaces the editable details of a shipment.",
+        "operationId": "UpdateShipmentV1",
+        "parameters": [
+          {
+            "name": "trackingNumber",
+            "in": "path",
+            "description": "Tracking number, for example APX-10000001.",
+            "required": true,
+            "schema": {
+              "pattern": "^APX-\\d{8}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Cancelled when the caller disconnects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateShipmentRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateShipmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated shipment.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No shipment has this tracking number.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The shipment has already been picked up and can no longer be edited.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The request is not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Deletes a shipment. Allowed only while its status is Created.",
+        "operationId": "DeleteShipmentV1",
+        "parameters": [
+          {
+            "name": "trackingNumber",
+            "in": "path",
+            "description": "Tracking number, for example APX-10000001.",
+            "required": true,
+            "schema": {
+              "pattern": "^APX-\\d{8}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "description": "No shipment has this tracking number.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The shipment is no longer in status Created.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          },
+          "403": {
+            "description": "The caller's role is not allowed (or, for scan upload, the courierId does not match the token)."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      }
+    },
+    "/api/v1/shipments/{trackingNumber}/status": {
+      "patch": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Moves a shipment to its next status.",
+        "operationId": "UpdateShipmentStatusV1",
+        "parameters": [
+          {
+            "name": "trackingNumber",
+            "in": "path",
+            "description": "Tracking number, for example APX-10000001.",
+            "required": true,
+            "schema": {
+              "pattern": "^APX-\\d{8}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Cancelled when the caller disconnects.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStatusRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The shipment with its new status.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No shipment has this tracking number.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed (Created, PickedUp, InTransit, OutForDelivery, then Delivered or Failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The request is not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token."
+          },
+          "403": {
+            "description": "The caller's role is not allowed (or, for scan upload, the courierId does not match the token)."
+          }
+        },
+        "deprecated": true,
+        "security": [
+          { }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateShipmentRequest": {
+        "required": [
+          "trackingNumber",
+          "recipientName",
+          "recipientPhone",
+          "address",
+          "city"
+        ],
+        "type": "object",
+        "properties": {
+          "trackingNumber": {
+            "pattern": "^APX-\\d{8}$",
+            "type": "string",
+            "description": "Tracking number chosen by the caller, in the form `APX-12345678`.",
+            "example": "APX-10000001"
+          },
+          "recipientName": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "description": "Name of the person receiving the parcel.",
+            "example": "Ada Lovelace"
+          },
+          "recipientPhone": {
+            "pattern": "^\\+?[0-9][0-9 ()\\-]{6,18}[0-9]$",
+            "type": "string",
+            "description": "Recipient phone number (digits, optional leading +, spaces, dashes and brackets).",
+            "example": "+61 400 000 111"
+          },
+          "address": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "description": "Delivery street address.",
+            "example": "12 Example Street"
+          },
+          "city": {
+            "maxLength": 100,
+            "minLength": 0,
+            "type": "string",
+            "description": "Delivery city.",
+            "example": "Melbourne"
+          },
+          "weightKg": {
+            "maximum": 70,
+            "minimum": 0.1,
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "description": "Parcel weight in kilograms (0.1 to 70).",
+            "format": "double",
+            "example": 2.5
+          }
+        },
+        "description": "Body of `POST /api/shipments`."
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "RejectedScanResponse": {
+        "required": [
+          "scanId",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "scanId": {
+            "type": "string",
+            "description": "The scan id from the request.",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable reason."
+          }
+        },
+        "description": "A scan that was not stored, and why."
+      },
+      "ScanItemRequest": {
+        "required": [
+          "scanId",
+          "scanType",
+          "location",
+          "scannedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "scanId": {
+            "type": "string",
+            "description": "The scan id generated on the device in Part A. It is the idempotency key.",
+            "format": "uuid",
+            "example": "3f2b8c1e-6a4d-4e0b-9a51-7d1c2e8f4b10"
+          },
+          "scanType": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScanType"
+              }
+            ],
+            "nullable": true
+          },
+          "location": {
+            "maxLength": 100,
+            "minLength": 0,
+            "type": "string",
+            "description": "Depot or street where the scan happened.",
+            "example": "Melbourne Depot"
+          },
+          "scannedAtUtc": {
+            "type": "string",
+            "description": "When the scan happened, in UTC. It must not be in the future.",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2026-11-09T01:30:00Z"
+          },
+          "recipientSignatureName": {
+            "maxLength": 100,
+            "minLength": 0,
+            "type": "string",
+            "description": "Name the recipient signed with. Required when `scanType` is `Delivered`.",
+            "nullable": true,
+            "example": "A. Lovelace"
+          },
+          "courierId": {
+            "maxLength": 50,
+            "minLength": 0,
+            "type": "string",
+            "description": "Optional: the courier who recorded the scan. When present it must equal the `courierId` claim of the caller's token,\r\notherwise the upload is refused with 403. When omitted, the scan is taken to belong to the caller.",
+            "nullable": true,
+            "example": "C-1001"
+          }
+        },
+        "description": "One scan from the courier's offline store."
+      },
+      "ScanResponse": {
+        "required": [
+          "scanId",
+          "scanType",
+          "location",
+          "scannedAtUtc",
+          "recipientSignatureName"
+        ],
+        "type": "object",
+        "properties": {
+          "scanId": {
+            "type": "string",
+            "description": "The scan id generated on the courier's device.",
+            "format": "uuid"
+          },
+          "scanType": {
+            "$ref": "#/components/schemas/ScanType"
+          },
+          "location": {
+            "type": "string",
+            "description": "Where the scan happened."
+          },
+          "scannedAtUtc": {
+            "type": "string",
+            "description": "When the scan happened (UTC).",
+            "format": "date-time"
+          },
+          "recipientSignatureName": {
+            "type": "string",
+            "description": "Signature name, present on delivered scans.",
+            "nullable": true
+          }
+        },
+        "description": "One scan in a shipment's history."
+      },
+      "ScanType": {
+        "enum": [
+          "PickedUp",
+          "Arrived",
+          "Departed",
+          "OutForDelivery",
+          "Delivered",
+          "DeliveryFailed"
+        ]
+      },
+      "ScanUploadRequest": {
+        "required": [
+          "scans"
+        ],
+        "type": "object",
+        "properties": {
+          "scans": {
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanItemRequest"
+            },
+            "description": "Between 1 and 100 scans. Re-sending a scan with the same `scanId` never creates a duplicate."
+          }
+        },
+        "description": "Body of `POST /api/shipments/{trackingNumber}/scans`: the offline scans a courier recorded (Part A)."
+      },
+      "ScanUploadResponse": {
+        "required": [
+          "accepted",
+          "duplicatesSkipped",
+          "rejected"
+        ],
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "description": "Scans stored by this request.",
+            "format": "int32"
+          },
+          "duplicatesSkipped": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "description": "Scans ignored because their scan id was already stored (or repeated in the request).",
+            "format": "int32"
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RejectedScanResponse"
+            },
+            "description": "Scans that could not be stored, with reasons."
+          }
+        },
+        "description": "Result of a bulk scan upload."
+      },
+      "ShipmentPageResponse": {
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalCount",
+          "totalPages"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShipmentResponse"
+            },
+            "description": "The shipments on this page."
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "description": "The page number returned (1-based).",
+            "format": "int32"
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "description": "The page size used (never more than 50).",
+            "format": "int32"
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "description": "How many shipments match the filter in total.",
+            "format": "int32"
+          },
+          "totalPages": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "description": "How many pages there are at this page size.",
+            "format": "int32"
+          }
+        },
+        "description": "One page of shipments (version 1)."
+      },
+      "ShipmentResponse": {
+        "required": [
+          "trackingNumber",
+          "recipientName",
+          "recipientPhone",
+          "address",
+          "city",
+          "weightKg",
+          "status",
+          "createdAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "trackingNumber": {
+            "type": "string",
+            "description": "Tracking number, for example `APX-10000001`."
+          },
+          "recipientName": {
+            "type": "string",
+            "description": "Name of the person receiving the parcel."
+          },
+          "recipientPhone": {
+            "type": "string",
+            "description": "Recipient phone number."
+          },
+          "address": {
+            "type": "string",
+            "description": "Delivery street address."
+          },
+          "city": {
+            "type": "string",
+            "description": "Delivery city."
+          },
+          "weightKg": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "description": "Parcel weight in kilograms.",
+            "format": "double"
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "description": "Lifecycle status as a number: 0 Created, 1 PickedUp, 2 InTransit, 3 OutForDelivery, 4 Delivered, 5 Failed.",
+            "format": "int32"
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "description": "When the shipment was created (UTC).",
+            "format": "date-time"
+          }
+        },
+        "description": "A shipment as returned by API version 1 (deprecated): flat recipient fields and a numeric status."
+      },
+      "TrackingStatus": {
+        "enum": [
+          "Created",
+          "PickedUp",
+          "InTransit",
+          "OutForDelivery",
+          "Delivered",
+          "Failed",
+          null
+        ]
+      },
+      "UpdateShipmentRequest": {
+        "required": [
+          "recipientName",
+          "recipientPhone",
+          "address",
+          "city"
+        ],
+        "type": "object",
+        "properties": {
+          "recipientName": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "description": "Name of the person receiving the parcel.",
+            "example": "Ada Lovelace"
+          },
+          "recipientPhone": {
+            "pattern": "^\\+?[0-9][0-9 ()\\-]{6,18}[0-9]$",
+            "type": "string",
+            "description": "Recipient phone number (digits, optional leading +, spaces, dashes and brackets).",
+            "example": "+61 400 000 111"
+          },
+          "address": {
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "description": "Delivery street address.",
+            "example": "12 Example Street"
+          },
+          "city": {
+            "maxLength": 100,
+            "minLength": 0,
+            "type": "string",
+            "description": "Delivery city.",
+            "example": "Melbourne"
+          },
+          "weightKg": {
+            "maximum": 70,
+            "minimum": 0.1,
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "description": "Parcel weight in kilograms (0.1 to 70).",
+            "format": "double",
+            "example": 2.5
+          }
+        },
+        "description": "Body of `PUT /api/shipments/{trackingNumber}`: replaces every editable detail (the tracking number cannot change)."
+      },
+      "UpdateStatusRequest": {
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TrackingStatus"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "description": "Body of `PATCH /api/shipments/{trackingNumber}/status`."
+      },
+      "ValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "description": "JWT access token. In Development get one from POST /dev/token, then paste only the token (Swagger UI adds the Bearer prefix).",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Scans"
+    },
+    {
+      "name": "Shipments"
+    }
+  ]
+}

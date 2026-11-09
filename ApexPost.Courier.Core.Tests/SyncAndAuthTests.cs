@@ -87,13 +87,50 @@ public sealed class SyncAndAuthTests
     }
 
     [Fact]
-    public async Task Login_returns_the_token_and_wrong_password_is_unauthorized()
+    public async Task Development_token_request_sends_courier_id_and_role_and_returns_the_token()
     {
-        using var ok = new Host(new StubHandler((_, _) => StubHandler.Json(HttpStatusCode.OK, """{"accessToken":"abc.def.ghi"}""")), token: null);
-        Assert.Equal("abc.def.ghi", await ok.Get<ApexApiClient>().LoginAsync("courier1", "pw", CancellationToken.None));
+        var handler = new StubHandler((_, _) => StubHandler.Json(HttpStatusCode.OK, """{"accessToken":"abc.def.ghi","expiresAtUtc":"2030-01-01T00:00:00Z"}"""));
+        using var host = new Host(handler, token: null);
 
-        using var bad = new Host(new StubHandler((_, _) => new HttpResponseMessage(HttpStatusCode.Unauthorized)), token: null);
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => bad.Get<ApexApiClient>().LoginAsync("courier1", "nope", CancellationToken.None));
+        var token = await host.Get<ApexApiClient>().GetDevelopmentTokenAsync("C-1001", CancellationToken.None);
+
+        Assert.Equal("abc.def.ghi", token);
+        var seen = Assert.Single(handler.Requests);
+        Assert.Equal("/dev/token", seen.Path);
+        Assert.Null(seen.Authorization);
+        using var json = System.Text.Json.JsonDocument.Parse(seen.Body);
+        Assert.Equal("C-1001", json.RootElement.GetProperty("courierId").GetString());
+        Assert.Equal("Courier", json.RootElement.GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task Token_response_without_expiry_is_accepted()
+    {
+        using var host = new Host(new StubHandler((_, _) => StubHandler.Json(HttpStatusCode.OK, """{"accessToken":"a.b.c"}""")), token: null);
+
+        Assert.Equal("a.b.c", await host.Get<ApexApiClient>().GetDevelopmentTokenAsync("C-1001", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Missing_development_endpoint_gives_a_clear_message()
+    {
+        using var host = new Host(new StubHandler((_, _) => new HttpResponseMessage(HttpStatusCode.NotFound)), token: null);
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => host.Get<ApexApiClient>().GetDevelopmentTokenAsync("C-1001", CancellationToken.None));
+
+        Assert.Contains("Development", ex.Message);
+    }
+
+    [Fact]
+    public async Task Courier_id_is_remembered_with_the_token_and_cleared_on_sign_out()
+    {
+        using var host = new Host(new StubHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK)), token: null);
+
+        await host.Tokens.SetCourierIdAsync("C-1001");
+        Assert.Equal("C-1001", await host.Tokens.GetCourierIdAsync());
+
+        await host.Tokens.ClearAsync();
+        Assert.Null(await host.Tokens.GetCourierIdAsync());
     }
 
     [Fact]

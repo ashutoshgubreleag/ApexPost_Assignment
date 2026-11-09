@@ -3,14 +3,17 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:pages="clr-namespace:ApexPost.Courier.Pages"
              x:Class="ApexPost.Courier.Pages.LoginPage"
-             Title="Sign in">
+             Title="Courier sign-in">
     <Grid RowDefinitions="Auto,*">
         <pages:OfflineBanner x:Name="Banner" />
         <VerticalStackLayout Grid.Row="1" Padding="24" Spacing="12" VerticalOptions="Center" MaximumWidthRequest="420">
             <Label Text="ApexPost Courier" FontSize="26" FontAttributes="Bold" />
-            <Entry x:Name="UserEntry" Placeholder="User name" Text="courier1" />
-            <Entry x:Name="PasswordEntry" Placeholder="Password" IsPassword="True" />
-            <Button x:Name="SignInButton" Text="Sign in" Clicked="OnSignIn" />
+            <Label Text="Courier ID" />
+            <Entry x:Name="CourierEntry" Placeholder="Courier ID" Text="C-1001" />
+            <Button x:Name="SignInButton" Text="Get development token" Clicked="OnGetToken" />
+            <Label Text="Or paste a JWT (the API must accept it):" FontSize="12" />
+            <Editor x:Name="TokenEditor" Placeholder="eyJ..." HeightRequest="80" AutoSize="TextChanges" />
+            <Button x:Name="PasteButton" Text="Use pasted token" Clicked="OnUsePastedToken" BackgroundColor="Gray" />
             <Label x:Name="ErrorLabel" TextColor="Firebrick" />
             <ActivityIndicator x:Name="Busy" IsRunning="False" />
         </VerticalStackLayout>

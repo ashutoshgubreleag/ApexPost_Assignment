@@ -14,18 +14,22 @@ public sealed class ApexApiClient(HttpClient http, IOptions<ApiOptions> options)
 {
     private readonly ApiOptions _options = options.Value;
 
-    public async Task<string> LoginAsync(string username, string password, CancellationToken cancellationToken)
+    /// <summary>Asks the development token endpoint for a Courier JWT for <paramref name="courierId"/>. The endpoint exists only when the API runs in Development.</summary>
+    public async Task<string> GetDevelopmentTokenAsync(string courierId, CancellationToken cancellationToken)
     {
-        var body = JsonContent.Create(new TokenRequestWire(username, password), ApexJsonContext.Default.TokenRequestWire);
+        ArgumentException.ThrowIfNullOrWhiteSpace(courierId);
+        var body = JsonContent.Create(new TokenRequestWire(courierId.Trim(), "Courier"), ApexJsonContext.Default.TokenRequestWire);
         using var response = await http.PostAsync(_options.TokenPath, body, cancellationToken).ConfigureAwait(false);
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest)
+        if (response.StatusCode == HttpStatusCode.NotFound)
         {
-            throw new UnauthorizedAccessException("Wrong user name or password.");
+            throw new ApiException(response.StatusCode, "The server has no development token endpoint (it only exists in Development). Paste a token instead.");
         }
 
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         var token = await response.Content.ReadFromJsonAsync(ApexJsonContext.Default.TokenResponseWire, cancellationToken).ConfigureAwait(false);
-        return token?.AccessToken ?? throw new ApiException(response.StatusCode, "The server returned no token.");
+        return string.IsNullOrWhiteSpace(token?.AccessToken)
+            ? throw new ApiException(response.StatusCode, "The server returned no token.")
+            : token.AccessToken;
     }
 
     public async Task<ScanUploadResultWire> UploadScansAsync(string trackingNumber, IReadOnlyList<ScanItemWire> scans, CancellationToken cancellationToken)

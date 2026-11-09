@@ -37,24 +37,69 @@ public partial class LoginPage : ContentPage
         base.OnDisappearing();
     }
 
-    private async void OnSignIn(object? sender, EventArgs e)
+    private async void OnGetToken(object? sender, EventArgs e)
+    {
+        var courierId = CourierEntry.Text?.Trim() ?? string.Empty;
+        if (courierId.Length == 0)
+        {
+            ErrorLabel.Text = "Enter a courier ID, for example C-1001.";
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var token = await _api.GetDevelopmentTokenAsync(courierId, CancellationToken.None);
+            await CompleteSignInAsync(token, courierId);
+        });
+    }
+
+    private async void OnUsePastedToken(object? sender, EventArgs e)
+    {
+        var token = TokenEditor.Text?.Trim() ?? string.Empty;
+        if (token.Split('.').Length != 3)
+        {
+            ErrorLabel.Text = "That does not look like a JWT (three parts separated by dots).";
+            return;
+        }
+
+        await RunAsync(() => CompleteSignInAsync(token, CourierEntry.Text?.Trim() ?? string.Empty));
+    }
+
+    /// <summary>One courier id everywhere: the token's courierId claim wins; otherwise the id typed here. New Scan and the scans stored by Part A use it.</summary>
+    private async Task CompleteSignInAsync(string token, string typedCourierId)
+    {
+        var courierId = JwtClaims.GetCourierId(token) ?? typedCourierId;
+        if (string.IsNullOrWhiteSpace(courierId))
+        {
+            throw new ApiException(System.Net.HttpStatusCode.BadRequest, "The token has no courierId claim: type your courier ID too.");
+        }
+
+        await _tokens.SetAsync(token);
+        await _tokens.SetCourierIdAsync(courierId);
+        TokenEditor.Text = string.Empty;
+        _sync.NotifyScanSaved(); // scans saved while signed out can go now
+        await Shell.Current.GoToAsync("//Main/NewScan");
+    }
+
+    private async Task RunAsync(Func<Task> action)
     {
         ErrorLabel.Text = string.Empty;
         Busy.IsRunning = true;
         SignInButton.IsEnabled = false;
+        PasteButton.IsEnabled = false;
         try
         {
-            var token = await _api.LoginAsync(UserEntry.Text?.Trim() ?? string.Empty, PasswordEntry.Text ?? string.Empty, CancellationToken.None);
-            await _tokens.SetAsync(token);
-            PasswordEntry.Text = string.Empty;
-            _sync.NotifyScanSaved(); // anything saved while signed out can go now
-            await Shell.Current.GoToAsync("//Main/NewScan");
+            await action();
+        }
+        catch (ApiException ex)
+        {
+            ErrorLabel.Text = ex.Message;
         }
         catch (UnauthorizedAccessException ex)
         {
             ErrorLabel.Text = ex.Message;
         }
-        catch (Exception ex) when (ex is HttpRequestException or ApiException or TimeoutException || ex.GetType().Name is "BrokenCircuitException" or "TimeoutRejectedException")
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException || ex.GetType().Name is "BrokenCircuitException" or "TimeoutRejectedException")
         {
             ErrorLabel.Text = "Cannot reach the server. Check the connection and try again.";
         }
@@ -62,6 +107,7 @@ public partial class LoginPage : ContentPage
         {
             Busy.IsRunning = false;
             SignInButton.IsEnabled = true;
+            PasteButton.IsEnabled = true;
         }
     }
 }

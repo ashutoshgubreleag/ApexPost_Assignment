@@ -9,8 +9,8 @@ public sealed class ApiOptions
     /// <summary>Scan upload route; <c>{0}</c> is the tracking number. Matches the versioned route from Part C.</summary>
     public string ScansPathTemplate { get; set; } = "api/v2/shipments/{0}/scans";
 
-    /// <summary>Sign-in route (see SECURITY.md): POST { username, password } returns { accessToken }.</summary>
-    public string TokenPath { get; set; } = "api/auth/token";
+    /// <summary>Development token route (see SECURITY.md): POST { courierId, role } returns { accessToken, expiresAtUtc }. Relative to <see cref="BaseAddress"/>.</summary>
+    public string TokenPath { get; set; } = "dev/token";
 
     /// <summary>Scans sent per request (the server accepts at most 100).</summary>
     public int MaxScansPerRequest { get; set; } = 50;

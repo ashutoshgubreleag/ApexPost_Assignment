@@ -33,9 +33,11 @@ public sealed record RejectedScanWire(Guid ScanId, string Reason);
 
 public sealed record ScanUploadResultWire(int Accepted, int DuplicatesSkipped, IReadOnlyList<RejectedScanWire> Rejected);
 
-public sealed record TokenRequestWire(string Username, string Password);
+/// <summary>Body of <c>POST dev/token</c> (Development only): the courier id becomes the <c>courierId</c> claim.</summary>
+public sealed record TokenRequestWire(string CourierId, string Role);
 
-public sealed record TokenResponseWire(string AccessToken);
+/// <summary>Answer of <c>POST dev/token</c>. <c>ExpiresAtUtc</c> may be missing.</summary>
+public sealed record TokenResponseWire(string AccessToken, DateTimeOffset? ExpiresAtUtc);
 
 /// <summary>The parts of an RFC 7807 Problem Details body the app shows.</summary>
 public sealed record ProblemWire(string? Title, string? Detail, int? Status, Dictionary<string, string[]>? Errors);

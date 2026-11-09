@@ -29,7 +29,7 @@ public partial class NewScanPage : ContentPage
     {
         base.OnAppearing();
         Banner.Bind(_sync);
-        _courierId = JwtClaims.GetCourierId(await _tokens.GetAsync()) ?? "unknown";
+        _courierId = JwtClaims.GetCourierId(await _tokens.GetAsync()) ?? await _tokens.GetCourierIdAsync() ?? "unknown";
         CourierLabel.Text = $"Courier: {_courierId}";
     }
 

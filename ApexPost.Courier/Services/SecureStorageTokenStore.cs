@@ -10,7 +10,9 @@ namespace ApexPost.Courier.Services;
 public sealed class SecureStorageTokenStore : ITokenStore
 {
     private const string Key = "apexpost.jwt";
+    private const string CourierKey = "apexpost.courierId";
     private string? _memory;
+    private string? _memoryCourier;
 
     public async Task<string?> GetAsync()
     {
@@ -40,9 +42,11 @@ public sealed class SecureStorageTokenStore : ITokenStore
     public Task ClearAsync()
     {
         _memory = null;
+        _memoryCourier = null;
         try
         {
             SecureStorage.Default.Remove(Key);
+            SecureStorage.Default.Remove(CourierKey);
         }
         catch (Exception ex) when (IsStoreProblem(ex))
         {
@@ -50,6 +54,31 @@ public sealed class SecureStorageTokenStore : ITokenStore
         }
 
         return Task.CompletedTask;
+    }
+
+    public async Task<string?> GetCourierIdAsync()
+    {
+        try
+        {
+            return await SecureStorage.Default.GetAsync(CourierKey).ConfigureAwait(false) ?? _memoryCourier;
+        }
+        catch (Exception ex) when (IsStoreProblem(ex))
+        {
+            return _memoryCourier;
+        }
+    }
+
+    public async Task SetCourierIdAsync(string courierId)
+    {
+        _memoryCourier = courierId;
+        try
+        {
+            await SecureStorage.Default.SetAsync(CourierKey, courierId).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsStoreProblem(ex))
+        {
+            // memory fallback only
+        }
     }
 
     private static bool IsStoreProblem(Exception ex) => ex is not OperationCanceledException;

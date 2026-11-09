@@ -27,7 +27,7 @@ every number is a setting in `ResilienceSettings`.
 | Attempt timeout | transient | yes |
 | 408, 500, 502, 503, 504 | transient | yes |
 | 400, 404, 409, 403 | the server's real answer | **no**: the scans are marked *Failed* with the Problem Details text |
-| 401 | session expired | **no**: token cleared, scans stay Pending, user signs in again |
+| 401 | session expired | **no**: token cleared, scans stay Pending, user gets a new token on the sign-in page |
 | Caller cancelled | not a failure | no, and scans stay Pending |
 
 Repeating a 400 would give the same 400 every time and only add load, so the pipeline does not do it.
@@ -63,6 +63,9 @@ Because the breaker is *inside* the retry, each failed attempt counts toward ope
 
 ## Storage and secrets
 
+* Sign-in: the courier enters a **Courier ID** (default `C-1001`) and the app calls `POST dev/token` with `{ "courierId", "role": "Courier" }`,
+  which only exists while the API runs in Development and returns `{ accessToken, expiresAtUtc }`. A JWT can also be pasted.
+  The token's `courierId` claim is the courier id stored on every scan.
 * The JWT is kept in `SecureStorage` (Android Keystore-backed, Windows data protection), never in Preferences, files or the scan database.
   If the secure store is unavailable (some unpackaged Windows setups) it is held in memory only: the user signs in again next launch.
 * Transport is HTTPS only. Debug builds accept the ASP.NET Core development certificate for `localhost` / `10.0.2.2` only;

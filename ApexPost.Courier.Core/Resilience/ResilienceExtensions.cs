@@ -22,7 +22,7 @@ public static class ResilienceExtensions
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(monitor);
 
-        return builder.AddResilienceHandler("apex-api", pipeline =>
+        builder.AddResilienceHandler("apex-api", pipeline =>
         {
             pipeline.AddTimeout(settings.TotalTimeout);
 
@@ -61,6 +61,8 @@ public static class ResilienceExtensions
 
             pipeline.AddTimeout(settings.AttemptTimeout);
         });
+
+        return builder;
     }
 
     private static bool IsTransient(Outcome<HttpResponseMessage> outcome) =>

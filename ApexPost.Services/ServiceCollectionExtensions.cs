@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ApexPost.Services.Abstractions;
 using ApexPost.Services.Authentication;
 using ApexPost.Services.Branch;
 using ApexPost.Services.Caching;
@@ -10,6 +11,7 @@ using ApexPost.Services.Catalog;
 using ApexPost.Services.Common;
 using ApexPost.Services.Courier;
 using ApexPost.Services.Dashboard;
+using ApexPost.Services.Tracking;
 using ApexPost.Services.Events;
 using ApexPost.Services.Inventory;
 using ApexPost.Services.MoneyOrders;
@@ -63,6 +65,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IOfflineSaleService, OfflineSaleService>();
+        services.AddScoped<IShipmentTrackingService, ShipmentTrackingService>();
 
         // Reads the shipment through the request's query service, so it is scoped like the DbContext.
         services.AddScoped<ICourierTrackingService, SimulatedCourierTrackingService>();

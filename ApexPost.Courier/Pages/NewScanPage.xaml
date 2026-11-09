@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:pages="clr-namespace:ApexPost.Courier.Pages"
+             x:Class="ApexPost.Courier.Pages.NewScanPage"
+             Title="New scan">
+    <Grid RowDefinitions="Auto,*">
+        <pages:OfflineBanner x:Name="Banner" />
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20" Spacing="10" MaximumWidthRequest="520">
+                <Label x:Name="CourierLabel" FontAttributes="Italic" />
+                <Entry x:Name="TrackingEntry" Placeholder="Tracking number (APX-12345678)" Text="APX-" />
+                <Picker x:Name="TypePicker" Title="Scan type" />
+                <Entry x:Name="LocationEntry" Placeholder="Location (depot or street)" />
+                <Entry x:Name="NotesEntry" Placeholder="Notes" />
+                <Label x:Name="NotesHint" Text="For Delivered scans, enter the recipient's signature name in Notes." FontSize="12" IsVisible="False" />
+                <Button Text="Save scan" Clicked="OnSave" />
+                <Label x:Name="ResultLabel" />
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

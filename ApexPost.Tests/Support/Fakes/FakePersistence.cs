@@ -1,6 +1,7 @@
 using ApexPost.Models.Domain;
 using ApexPost.Models.ValueObjects;
 using ApexPost.Services.Abstractions;
+using ApexPost.Services.Tracking;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ApexPost.Tests.Support.Fakes;
@@ -254,6 +255,9 @@ public static class FakePersistenceRegistration
         services.AddScoped<IIdentityVerificationRepository, FakeIdentityVerificationRepository>();
         services.AddScoped<INotificationRepository, FakeNotificationRepository>();
         services.AddScoped<ISyncInboxRepository, FakeSyncInboxRepository>();
+        // Week 4 tracking ports: the Week 3 suites never use them; the API tests cover them. Present only so the container validates.
+        services.AddScoped<ITrackedShipmentRepository, UnusedTrackedShipmentRepository>();
+        services.AddScoped<ITrackingQueries, UnusedTrackingQueries>();
 
         services.AddScoped<InMemoryQueries>();
         // One guard per scope, like the one DbContext per request: overlapping query calls throw.
@@ -269,4 +273,27 @@ public static class FakePersistenceRegistration
         services.AddSingleton<IAuditStore>(sp => sp.GetRequiredService<InMemoryAuditStore>());
         return services;
     }
+}
+
+
+internal sealed class UnusedTrackedShipmentRepository : ITrackedShipmentRepository
+{
+    public Task<TrackedShipment?> GetByTrackingNumberAsync(string trackingNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<bool> ExistsAsync(string trackingNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<IReadOnlyDictionary<Guid, int>> GetScanOwnersAsync(IReadOnlyCollection<Guid> scanIds, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public void Add(TrackedShipment shipment) => throw new NotSupportedException();
+
+    public void Remove(TrackedShipment shipment) => throw new NotSupportedException();
+}
+
+internal sealed class UnusedTrackingQueries : ITrackingQueries
+{
+    public Task<PagedResult<TrackedShipmentDto>> ListAsync(TrackingListQuery query, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<TrackedShipmentDto?> GetAsync(string trackingNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<ScanDto>?> GetScansAsync(string trackingNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
 }

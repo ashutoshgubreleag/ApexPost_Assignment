@@ -1,0 +1,37 @@
+{
+  "runtime": "Default",
+  "documentGenerator": {
+    "fromDocument": {
+      "json": "../contracts/v2.json",
+      "output": null
+    }
+  },
+  "codeGenerators": {
+    "openApiToCSharpClient": {
+      "clientBaseClass": null,
+      "configurationClass": null,
+      "generateClientClasses": true,
+      "generateClientInterfaces": true,
+      "generateDtoTypes": true,
+      "injectHttpClient": true,
+      "disposeHttpClient": false,
+      "useBaseUrl": false,
+      "generateBaseUrlProperty": false,
+      "operationGenerationMode": "SingleClientFromOperationId",
+      "className": "ApexPostClient",
+      "namespace": "ApexPost.Client",
+      "generateOptionalParameters": false,
+      "generateExceptionClasses": true,
+      "exceptionClass": "ApiException",
+      "wrapResponses": false,
+      "dateTimeType": "System.DateTimeOffset",
+      "jsonLibrary": "SystemTextJson",
+      "generateNativeRecords": false,
+      "generateDefaultValues": true,
+      "generateDataAnnotations": true,
+      "classStyle": "Poco",
+      "enumStyle": "Enum",
+      "output": "Generated/ApexPostClient.g.cs"
+    }
+  }
+}

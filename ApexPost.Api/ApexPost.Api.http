@@ -1,0 +1,305 @@
+# ApexPost.Api requests (Part B, unversioned /api/v2/shipments).
+# Works in Visual Studio 2022 (Endpoints Explorer), VS Code (REST Client) and Rider.
+# Run the API first:  dotnet run --project .\ApexPost.Api --launch-profile https
+# Requests run top to bottom. Each request has one success case and one failure case.
+# Part D: every /api request needs a JWT. Request 0 gets tokens from the Development-only /dev/token endpoint.
+# (The token variables use JSONPath: Visual Studio 2022 and the VS Code REST Client accept `body.$.accessToken`.
+#  The API must run in Development: dotnet run --project .\ApexPost.Api --launch-profile https)
+
+@host = https://localhost:7153
+@tn = APX-10000001
+@scanA = 3f2b8c1e-6a4d-4e0b-9a51-7d1c2e8f4b10
+@scanB = 8c1d0f55-2b7e-4a39-b1c6-0e5a9d3f7a22
+
+### 0a. Get a COURIER token (courierId C-1001) -> 200 { accessToken, expiresAtUtc }
+# @name courierLogin
+POST {{host}}/dev/token
+Content-Type: application/json
+
+{ "courierId": "C-1001", "role": "Courier" }
+
+@courierToken = {{courierLogin.response.body.$.accessToken}}
+
+### 0b. Get an ADMIN token -> 200
+# @name adminLogin
+POST {{host}}/dev/token
+Content-Type: application/json
+
+{ "courierId": "A-1", "role": "Admin" }
+
+@adminToken = {{adminLogin.response.body.$.accessToken}}
+
+### 0c. Token request, FAILURE -> 400 ProblemDetails (unknown role)
+POST {{host}}/dev/token
+Content-Type: application/json
+
+{ "courierId": "C-1001", "role": "Manager" }
+
+### 1. Create a shipment -> 201 Created + Location header
+POST {{host}}/api/v2/shipments
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "trackingNumber": "{{tn}}",
+  "recipientName": "Ada Lovelace",
+  "recipientPhone": "+61 400 000 111",
+  "address": "12 Example Street",
+  "city": "Melbourne",
+  "weightKg": 2.5
+}
+
+### 1b. Create, FAILURE -> 400 ValidationProblemDetails (bad tracking number, weight out of range, missing fields)
+POST {{host}}/api/v2/shipments
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "trackingNumber": "BAD-1",
+  "recipientName": "",
+  "weightKg": 100
+}
+
+### 1c. Create, FAILURE -> 409 Conflict (run request 1 twice)
+POST {{host}}/api/v2/shipments
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "trackingNumber": "{{tn}}",
+  "recipientName": "Ada Lovelace",
+  "recipientPhone": "+61 400 000 111",
+  "address": "12 Example Street",
+  "city": "Melbourne",
+  "weightKg": 2.5
+}
+
+### 1d. Create, FAILURE -> 415 Unsupported Media Type
+POST {{host}}/api/v2/shipments
+Authorization: Bearer {{courierToken}}
+Content-Type: text/plain
+
+trackingNumber=APX-10000009
+
+### 2. List shipments (paged, filtered) -> 200
+GET {{host}}/api/v2/shipments?page=1&pageSize=20&status=Created&city=Melbourne
+Authorization: Bearer {{courierToken}}
+
+### 2b. List, FAILURE -> 400 (unknown status)
+GET {{host}}/api/v2/shipments?status=Teleported
+Authorization: Bearer {{courierToken}}
+
+### 3. Get one shipment -> 200
+GET {{host}}/api/v2/shipments/{{tn}}
+Authorization: Bearer {{courierToken}}
+
+### 3b. Get, FAILURE -> 404 (unknown tracking number)
+GET {{host}}/api/v2/shipments/APX-99999999
+Authorization: Bearer {{courierToken}}
+
+### 4. Replace editable details -> 200 (only while status is Created)
+PUT {{host}}/api/v2/shipments/{{tn}}
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "recipientName": "Grace Hopper",
+  "recipientPhone": "0400 000 333",
+  "address": "9 New Lane",
+  "city": "Sydney",
+  "weightKg": 4
+}
+
+### 4b. Replace, FAILURE -> 400 (weight out of range)
+PUT {{host}}/api/v2/shipments/{{tn}}
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "recipientName": "Grace Hopper",
+  "recipientPhone": "0400 000 333",
+  "address": "9 New Lane",
+  "city": "Sydney",
+  "weightKg": 0.01
+}
+
+### 5. Change status (next step only) -> 200
+PATCH {{host}}/api/v2/shipments/{{tn}}/status
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{ "status": "PickedUp" }
+
+### 5b. Change status, FAILURE -> 409 (skips InTransit and OutForDelivery)
+PATCH {{host}}/api/v2/shipments/{{tn}}/status
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{ "status": "Delivered" }
+
+### 6. Upload scans (idempotent: send it twice, the second response says duplicatesSkipped) -> 200
+POST {{host}}/api/v2/shipments/{{tn}}/scans
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "{{scanA}}", "scanType": "Arrived", "location": "Melbourne Depot", "scannedAtUtc": "2026-11-08T22:00:00Z" },
+    { "scanId": "{{scanB}}", "scanType": "Departed", "location": "Melbourne Depot", "scannedAtUtc": "2026-11-08T23:00:00Z" }
+  ]
+}
+
+### 6b. Upload scans, FAILURE -> 400 (Delivered scan without a signature name, and a scan in the future)
+POST {{host}}/api/v2/shipments/{{tn}}/scans
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "5a0c7e91-3d44-4b6f-8e12-9f7b6c1d2a33", "scanType": "Delivered", "location": "12 Example Street", "scannedAtUtc": "2026-11-08T23:30:00Z" },
+    { "scanId": "6b1d8fa2-4e55-4c70-9f23-a08c7d2e3b44", "scanType": "Arrived", "location": "Melbourne Depot", "scannedAtUtc": "2099-01-01T00:00:00Z" }
+  ]
+}
+
+### 7. Scan history -> 200
+GET {{host}}/api/v2/shipments/{{tn}}/scans
+Authorization: Bearer {{courierToken}}
+
+### 7b. Scan history, FAILURE -> 404
+GET {{host}}/api/v2/shipments/APX-99999999/scans
+Authorization: Bearer {{courierToken}}
+
+### 8. Delete (only while status is Created). Create APX-10000002 first, then delete it -> 204
+POST {{host}}/api/v2/shipments
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "trackingNumber": "APX-10000002",
+  "recipientName": "Alan Turing",
+  "recipientPhone": "0390001234",
+  "address": "1 Demo Road",
+  "city": "Melbourne",
+  "weightKg": 1
+}
+
+###
+DELETE {{host}}/api/v2/shipments/APX-10000002
+Authorization: Bearer {{adminToken}}
+
+### 8b. Delete, FAILURE -> 409 (the shipment was picked up in request 5)
+DELETE {{host}}/api/v2/shipments/{{tn}}
+Authorization: Bearer {{adminToken}}
+
+
+# ---------------------------------------------------------------------------------------------
+# Part C: versions, headers and contracts
+# ---------------------------------------------------------------------------------------------
+
+### 9. v2 shipment: nested "recipient", "latestScan" and "status" as a string -> 200
+# Look at the response headers too: api-supported-versions: 2.0 and api-deprecated-versions: 1.0
+GET {{host}}/api/v2/shipments/{{tn}}
+Authorization: Bearer {{courierToken}}
+
+### 10. v1 (DEPRECATED) shipment: flat recipient fields and a NUMERIC status (0 = Created ... 5 = Failed) -> 200
+GET {{host}}/api/v1/shipments/{{tn}}
+Authorization: Bearer {{courierToken}}
+
+### 10b. v1 list -> 200 (same paging rules, flat items)
+GET {{host}}/api/v1/shipments?page=1&pageSize=20
+Authorization: Bearer {{courierToken}}
+
+### 10c. v1 create -> 201, Location is /api/v1/shipments/APX-10000003
+POST {{host}}/api/v1/shipments
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "trackingNumber": "APX-10000003",
+  "recipientName": "Grace Hopper",
+  "recipientPhone": "0400 000 333",
+  "address": "9 New Lane",
+  "city": "Sydney",
+  "weightKg": 3
+}
+
+### 10d. v1 scan upload: the scan contract is the same in both versions -> 200
+POST {{host}}/api/v1/shipments/APX-10000003/scans
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "7c2e9ab3-5f66-4d81-a034-b19d8e3f4c55", "scanType": "PickedUp", "location": "Sydney Depot", "scannedAtUtc": "2026-11-08T21:00:00Z" }
+  ]
+}
+
+### 11. FAILURE -> 404: the old unversioned route no longer exists
+GET {{host}}/api/shipments/{{tn}}
+Authorization: Bearer {{courierToken}}
+
+### 12. OpenAPI contract of each version (Development only)
+GET {{host}}/openapi/v1.json
+
+###
+GET {{host}}/openapi/v2.json
+
+### 13. Swagger UI (open in a browser, Development only): {{host}}/swagger
+
+# ---------------- Part D: security demos (take screenshots of these) ----------------
+
+### 14. FAILURE -> 401 Unauthorized (no token) ProblemDetails + WWW-Authenticate: Bearer
+GET {{host}}/api/v2/shipments
+
+### 14b. FAILURE -> 401 (invalid token)
+GET {{host}}/api/v2/shipments
+Authorization: Bearer not-a-real-token
+
+### 15. FAILURE -> 403 Forbidden: a Courier may not delete (Admin only)
+DELETE {{host}}/api/v2/shipments/APX-10000002
+Authorization: Bearer {{courierToken}}
+
+### 15b. FAILURE -> 403 Forbidden: an Admin may not upload scans (Courier only)
+POST {{host}}/api/v2/shipments/{{tn}}/scans
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "{{scanA}}", "scanType": "PickedUp", "location": "Melbourne Depot", "scannedAtUtc": "2026-11-08T21:00:00Z" }
+  ]
+}
+
+### 15c. FAILURE -> 403 Forbidden: courierId mismatch (token says C-1001, the scan says C-9999)
+POST {{host}}/api/v2/shipments/{{tn}}/scans
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "{{scanB}}", "scanType": "PickedUp", "location": "Melbourne Depot", "scannedAtUtc": "2026-11-08T21:00:00Z", "courierId": "C-9999" }
+  ]
+}
+
+### 15d. SUCCESS -> 200: valid courier token, scan under the caller's own courierId
+POST {{host}}/api/v2/shipments/{{tn}}/scans
+Authorization: Bearer {{courierToken}}
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "{{scanB}}", "scanType": "PickedUp", "location": "Melbourne Depot", "scannedAtUtc": "2026-11-08T21:00:00Z", "courierId": "C-1001" }
+  ]
+}
+
+### 16. Partner route, SUCCESS -> 200 (no JWT). Put your key in the variable first: it must equal Partner:ApiKeys:0 in user-secrets.
+@partnerKey = replace-with-your-local-partner-key
+GET {{host}}/api/v2/partner/shipments/{{tn}}
+X-Api-Key: {{partnerKey}}
+
+### 16b. Partner route, FAILURE -> 401 (invalid API key)
+GET {{host}}/api/v2/partner/shipments/{{tn}}
+X-Api-Key: wrong-key
+
+### 16c. Partner route, FAILURE -> 401 (no API key)
+GET {{host}}/api/v2/partner/shipments/{{tn}}

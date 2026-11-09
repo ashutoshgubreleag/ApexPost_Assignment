@@ -6,11 +6,18 @@
     <File Path="PERFORMANCE.md" />
     <File Path="CONFLICTS.md" />
     <File Path="docs/DEMO.md" />
+    <File Path="RESILIENCE.md" />
+    <File Path="docs/DEMO-VIDEO-SCRIPT.md" />
     <File Path="AUDIT-SAMPLE.json" />
     <File Path="ApexPost-Postman-Collection.json" />
     <File Path="database/schema.sql" />
     <File Path="scripts/run-perf.ps1" />
     <File Path="scripts/verify-week3.ps1" />
+    <File Path="scripts/export-contracts.ps1" />
+    <File Path="scripts/generate-client.ps1" />
+    <File Path="VERSIONING.md" />
+    <File Path="API-NOTES.md" />
+    <File Path="contracts/README.md" />
   </Folder>
   <Project Path="ApexPost.Models/ApexPost.Models.csproj" />
   <Project Path="ApexPost.Database/ApexPost.Database.csproj" />
@@ -19,8 +26,17 @@
   <Project Path="ApexPost.Contracts/ApexPost.Contracts.csproj" />
   <Project Path="ApexPost.Utilities/ApexPost.Utilities.csproj" />
   <Project Path="ApexPost.MVC/ApexPost.MVC.csproj" />
+  <Project Path="ApexPost.Api/ApexPost.Api.csproj" />
+  <Project Path="ApexPost.Client/ApexPost.Client.csproj" />
+  <Project Path="ApexPost.Client.Consumer/ApexPost.Client.Consumer.csproj" />
   <Project Path="ApexPost.CounterTerminal/ApexPost.CounterTerminal.csproj" />
   <Project Path="ApexPost.Tests/ApexPost.Tests.csproj" />
+  <Project Path="ApexPost.Api.Tests/ApexPost.Api.Tests.csproj" />
   <Project Path="ApexPost.CounterTerminal.Tests/ApexPost.CounterTerminal.Tests.csproj" />
   <Project Path="ApexPost.IntegrationTests/ApexPost.IntegrationTests.csproj" />
+  <Project Path="ApexPost.Courier.Offline/ApexPost.Courier.Offline.csproj" />
+  <Project Path="ApexPost.Courier.Offline.Harness/ApexPost.Courier.Offline.Harness.csproj" />
+  <Project Path="ApexPost.Courier.Offline.Tests/ApexPost.Courier.Offline.Tests.csproj" />
+  <Project Path="ApexPost.Courier.Core/ApexPost.Courier.Core.csproj" />
+  <Project Path="ApexPost.Courier.Core.Tests/ApexPost.Courier.Core.Tests.csproj" />
 </Solution>

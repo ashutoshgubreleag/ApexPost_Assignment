@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- REST API for courier shipment tracking (Week 4 Parts B and C: REST API, OpenAPI documents, URL-segment versioning). Reuses the Week 3 layers through DI.
+       Secrets live outside the repo:
+       dotnet user-secrets set "ConnectionStrings:ApexPostDb" "Server=.;Database=ApexPostDb;Trusted_Connection=True;TrustServerCertificate=True" -p ApexPost.Api -->
+  <PropertyGroup>
+    <UserSecretsId>apexpost-api-7b3e5a91</UserSecretsId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Asp.Versioning.Mvc" Version="8.1.0" />
+    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
+    <!-- Built-in OpenAPI generator (also reads the XML doc comments of the controllers and DTOs). -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <!-- Pin: transitive 2.0.0 has advisory GHSA-v5pm-xwqc-g5wc (fixed in 2.7.5) -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+    <!-- Swagger UI ONLY: the static viewer. Swashbuckle's document generator is deliberately not used. -->
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ApexPost.Services\ApexPost.Services.csproj" />
+    <ProjectReference Include="..\ApexPost.Repositories\ApexPost.Repositories.csproj" />
+    <ProjectReference Include="..\ApexPost.Utilities\ApexPost.Utilities.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ApexPost.Api.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,35 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261109163338
+Username: DESKTOP-FB55L35\Administrator
+RunAs User: DESKTOP-FB55L35\Administrator
+Configuration Name: 
+Machine: DESKTOP-FB55L35 (Microsoft Windows NT 10.0.22000.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\scripts\demo-requests.ps1 -PartnerKey ynwbBZIQ9lYs_H-lgVZZAw9BSNICbiHBDiD8awEiSB0 -Pause
+Process ID: 6452
+PSVersion: 5.1.22000.2538
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.22000.2538
+BuildVersion: 10.0.22000.2538
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Tracking numbers this run: APX-82902095, APX-91279094, APX-42363206
+
+### Token: Courier
+POST /dev/token
+HTTP 200 OK
+{
+    "accessToken":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcGV4cG9zdC1hcGkiLCJpc3MiOiJodHRwczovL2FwZXhwb3N0LmV4YW1wbGUvYXBpIiwiZXhwIjoxNzk0MjI1ODE4LCJpYXQiOjE3OTQyMjIyMTgsIm5iZiI6MTc5NDIyMjIxOCwic3ViIjoiQy0xMDAxIiwiY291cmllcklkIjoiQy0xMDAxIiwicm9sZSI6IkNvdXJpZXIiLCJqdGkiOiIwZGFiOWI0ZTI5MTU0MjNmODJiN2YzNWQxZDNjOTUwMCJ9.TRgjtPku0yNF_4w2JlwSM0mbuYfnr87RRCHUtGjxZqY",
+    "expiresAtUtc":  "2026-11-09T12:03:38.6064368+00:00"
+}
+
+### Token: Admin
+POST /dev/token
+HTTP 200 OK
+{
+    "accessToken":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcGV4cG9zdC1hcGkiLCJpc3MiOiJodHRwczovL2FwZXhwb3N0LmV4YW1wbGUvYXBpIiwiZXhwIjoxNzk0MjI2MDkyLCJpYXQiOjE3OTQyMjI0OTIsIm5iZiI6MTc5NDIyMjQ5Miwic3ViIjoiQS0xIiwiY291cmllcklkIjoiQS0xIiwicm9sZSI6IkFkbWluIiwianRpIjoiODcyMjNkYzJiYmM5NGI4Y2JjOGJjNDVmMzMzMzFlNjUifQ.IWF3AiHNbNWz4dRbtX1YcSLTQzfemB40phWaERnQnaA",
+    "expiresAtUtc":  "2026-11-09T12:08:12.4131814+00:00"
+}

@@ -54,6 +54,10 @@ public sealed class ApexPostDbContext(DbContextOptions<ApexPostDbContext> option
 
     public DbSet<SyncConflict> SyncConflicts => Set<SyncConflict>();
 
+    public DbSet<TrackedShipment> TrackedShipments => Set<TrackedShipment>();
+
+    public DbSet<ShipmentScan> ShipmentScans => Set<ShipmentScan>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder) =>
         ApexPostConventions.Apply(configurationBuilder);
 

@@ -91,6 +91,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IIdentityVerificationRepository, IdentityVerificationRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISyncInboxRepository, SyncInboxRepository>();
+        services.AddScoped<ITrackedShipmentRepository, TrackedShipmentRepository>();
 
         services.AddScoped<IBranchQueries, BranchQueries>();
         services.AddScoped<IStaffQueries, StaffQueries>();
@@ -99,6 +100,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IReportQueries, ReportQueries>();
         services.AddScoped<INotificationQueries, NotificationQueries>();
         services.AddScoped<ISyncQueries, SyncQueries>();
+        services.AddScoped<ITrackingQueries, TrackingQueries>();
 
         services.AddSingleton<IAuditStore, SqlAuditStore>();
         return services;

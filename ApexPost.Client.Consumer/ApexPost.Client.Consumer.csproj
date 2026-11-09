@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Console consumer of the generated SDK: proves the client works against a running ApexPost.Api.
-       Run:  dotnet run --project .\ApexPost.Client.Consumer -->
+       Run:  dotnet run -p .\ApexPost.Client.Consumer -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>

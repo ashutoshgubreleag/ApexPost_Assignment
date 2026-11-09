@@ -1,0 +1,146 @@
+# ApexPost.Api requests (Part B, unversioned /api/shipments).
+# Works in Visual Studio 2022 (Endpoints Explorer), VS Code (REST Client) and Rider.
+# Run the API first:  dotnet run --project .\ApexPost.Api --launch-profile https
+# Requests run top to bottom. Each request has one success case and one failure case.
+
+@host = https://localhost:7153
+@tn = APX-10000001
+@scanA = 3f2b8c1e-6a4d-4e0b-9a51-7d1c2e8f4b10
+@scanB = 8c1d0f55-2b7e-4a39-b1c6-0e5a9d3f7a22
+
+### 1. Create a shipment -> 201 Created + Location header
+POST {{host}}/api/shipments
+Content-Type: application/json
+
+{
+  "trackingNumber": "{{tn}}",
+  "recipientName": "Ada Lovelace",
+  "recipientPhone": "+61 400 000 111",
+  "address": "12 Example Street",
+  "city": "Melbourne",
+  "weightKg": 2.5
+}
+
+### 1b. Create, FAILURE -> 400 ValidationProblemDetails (bad tracking number, weight out of range, missing fields)
+POST {{host}}/api/shipments
+Content-Type: application/json
+
+{
+  "trackingNumber": "BAD-1",
+  "recipientName": "",
+  "weightKg": 100
+}
+
+### 1c. Create, FAILURE -> 409 Conflict (run request 1 twice)
+POST {{host}}/api/shipments
+Content-Type: application/json
+
+{
+  "trackingNumber": "{{tn}}",
+  "recipientName": "Ada Lovelace",
+  "recipientPhone": "+61 400 000 111",
+  "address": "12 Example Street",
+  "city": "Melbourne",
+  "weightKg": 2.5
+}
+
+### 1d. Create, FAILURE -> 415 Unsupported Media Type
+POST {{host}}/api/shipments
+Content-Type: text/plain
+
+trackingNumber=APX-10000009
+
+### 2. List shipments (paged, filtered) -> 200
+GET {{host}}/api/shipments?page=1&pageSize=20&status=Created&city=Melbourne
+
+### 2b. List, FAILURE -> 400 (unknown status)
+GET {{host}}/api/shipments?status=Teleported
+
+### 3. Get one shipment -> 200
+GET {{host}}/api/shipments/{{tn}}
+
+### 3b. Get, FAILURE -> 404 (unknown tracking number)
+GET {{host}}/api/shipments/APX-99999999
+
+### 4. Replace editable details -> 200 (only while status is Created)
+PUT {{host}}/api/shipments/{{tn}}
+Content-Type: application/json
+
+{
+  "recipientName": "Grace Hopper",
+  "recipientPhone": "0400 000 333",
+  "address": "9 New Lane",
+  "city": "Sydney",
+  "weightKg": 4
+}
+
+### 4b. Replace, FAILURE -> 400 (weight out of range)
+PUT {{host}}/api/shipments/{{tn}}
+Content-Type: application/json
+
+{
+  "recipientName": "Grace Hopper",
+  "recipientPhone": "0400 000 333",
+  "address": "9 New Lane",
+  "city": "Sydney",
+  "weightKg": 0.01
+}
+
+### 5. Change status (next step only) -> 200
+PATCH {{host}}/api/shipments/{{tn}}/status
+Content-Type: application/json
+
+{ "status": "PickedUp" }
+
+### 5b. Change status, FAILURE -> 409 (skips InTransit and OutForDelivery)
+PATCH {{host}}/api/shipments/{{tn}}/status
+Content-Type: application/json
+
+{ "status": "Delivered" }
+
+### 6. Upload scans (idempotent: send it twice, the second response says duplicatesSkipped) -> 200
+POST {{host}}/api/shipments/{{tn}}/scans
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "{{scanA}}", "scanType": "Arrived", "location": "Melbourne Depot", "scannedAtUtc": "2026-11-08T22:00:00Z" },
+    { "scanId": "{{scanB}}", "scanType": "Departed", "location": "Melbourne Depot", "scannedAtUtc": "2026-11-08T23:00:00Z" }
+  ]
+}
+
+### 6b. Upload scans, FAILURE -> 400 (Delivered scan without a signature name, and a scan in the future)
+POST {{host}}/api/shipments/{{tn}}/scans
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "5a0c7e91-3d44-4b6f-8e12-9f7b6c1d2a33", "scanType": "Delivered", "location": "12 Example Street", "scannedAtUtc": "2026-11-08T23:30:00Z" },
+    { "scanId": "6b1d8fa2-4e55-4c70-9f23-a08c7d2e3b44", "scanType": "Arrived", "location": "Melbourne Depot", "scannedAtUtc": "2099-01-01T00:00:00Z" }
+  ]
+}
+
+### 7. Scan history -> 200
+GET {{host}}/api/shipments/{{tn}}/scans
+
+### 7b. Scan history, FAILURE -> 404
+GET {{host}}/api/shipments/APX-99999999/scans
+
+### 8. Delete (only while status is Created). Create APX-10000002 first, then delete it -> 204
+POST {{host}}/api/shipments
+Content-Type: application/json
+
+{
+  "trackingNumber": "APX-10000002",
+  "recipientName": "Alan Turing",
+  "recipientPhone": "0390001234",
+  "address": "1 Demo Road",
+  "city": "Melbourne",
+  "weightKg": 1
+}
+
+###
+DELETE {{host}}/api/shipments/APX-10000002
+
+### 8b. Delete, FAILURE -> 409 (the shipment was picked up in request 5)
+DELETE {{host}}/api/shipments/{{tn}}

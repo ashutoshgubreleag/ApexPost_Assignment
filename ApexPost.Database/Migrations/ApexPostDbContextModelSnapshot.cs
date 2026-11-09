@@ -3859,6 +3859,162 @@ namespace ApexPost.Database.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ApexPost.Models.Domain.ShipmentScan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2(3)")
+                        .HasDefaultValueSql("SYSUTCDATETIME()", "DF_ShipmentScans_CreatedAtUtc");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(50)")
+                        .HasDefaultValue("system", "DF_ShipmentScans_CreatedBy");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("ModifiedAtUtc")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("RecipientSignatureName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("ScanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ScannedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<int>("ShipmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("Type");
+
+                    b.HasKey("Id")
+                        .HasName("PK_ShipmentScans");
+
+                    b.HasIndex("ScanId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_ShipmentScans_ScanId");
+
+                    b.HasIndex("ShipmentId", "ScannedAt")
+                        .HasDatabaseName("IX_ShipmentScans_Shipment_ScannedAt");
+
+                    b.ToTable("ShipmentScans", "dbo", t =>
+                        {
+                            t.HasCheckConstraint("CK_ShipmentScans_Type", "[Type] IN ('PickedUp', 'Arrived', 'Departed', 'OutForDelivery', 'Delivered', 'DeliveryFailed')");
+                        });
+                });
+
+            modelBuilder.Entity("ApexPost.Models.Domain.TrackedShipment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AddressLine")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2(3)")
+                        .HasDefaultValueSql("SYSUTCDATETIME()", "DF_TrackedShipments_CreatedAtUtc");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(50)")
+                        .HasDefaultValue("system", "DF_TrackedShipments_CreatedBy");
+
+                    b.Property<DateTime?>("ModifiedAtUtc")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("RecipientPhone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("Status");
+
+                    b.Property<string>("TrackingNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<decimal>("WeightKg")
+                        .HasPrecision(9, 3)
+                        .HasColumnType("decimal(9,3)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_TrackedShipments");
+
+                    b.HasIndex("TrackingNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_TrackedShipments_TrackingNumber");
+
+                    b.HasIndex("Status", "City")
+                        .HasDatabaseName("IX_TrackedShipments_Status_City");
+
+                    b.ToTable("TrackedShipments", "dbo", t =>
+                        {
+                            t.HasCheckConstraint("CK_TrackedShipments_Status", "[Status] IN ('Created', 'PickedUp', 'InTransit', 'OutForDelivery', 'Delivered', 'Failed')");
+
+                            t.HasCheckConstraint("CK_TrackedShipments_TrackingNumber_Format", "[TrackingNumber] LIKE 'APX-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'");
+
+                            t.HasCheckConstraint("CK_TrackedShipments_WeightKg_Range", "[WeightKg] >= 0.1 AND [WeightKg] <= 70");
+                        });
+                });
+
             modelBuilder.Entity("ApexPost.Models.Domain.ShippingRate", b =>
                 {
                     b.Property<int>("Id")
@@ -5106,6 +5262,16 @@ namespace ApexPost.Database.Migrations
                     b.Navigation("Recipient");
                 });
 
+            modelBuilder.Entity("ApexPost.Models.Domain.ShipmentScan", b =>
+                {
+                    b.HasOne("ApexPost.Models.Domain.TrackedShipment", null)
+                        .WithMany("Scans")
+                        .HasForeignKey("ShipmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_ShipmentScans_TrackedShipments");
+                });
+
             modelBuilder.Entity("ApexPost.Models.Domain.ShippingRate", b =>
                 {
                     b.HasOne("ApexPost.Models.Domain.ShippingZone", null)
@@ -5189,6 +5355,11 @@ namespace ApexPost.Database.Migrations
             modelBuilder.Entity("ApexPost.Models.Domain.ShippingZone", b =>
                 {
                     b.Navigation("Rates");
+                });
+
+            modelBuilder.Entity("ApexPost.Models.Domain.TrackedShipment", b =>
+                {
+                    b.Navigation("Scans");
                 });
 
             modelBuilder.Entity("ApexPost.Models.Domain.SyncInboxEntry", b =>

@@ -19,8 +19,10 @@
   <Project Path="ApexPost.Contracts/ApexPost.Contracts.csproj" />
   <Project Path="ApexPost.Utilities/ApexPost.Utilities.csproj" />
   <Project Path="ApexPost.MVC/ApexPost.MVC.csproj" />
+  <Project Path="ApexPost.Api/ApexPost.Api.csproj" />
   <Project Path="ApexPost.CounterTerminal/ApexPost.CounterTerminal.csproj" />
   <Project Path="ApexPost.Tests/ApexPost.Tests.csproj" />
+  <Project Path="ApexPost.Api.Tests/ApexPost.Api.Tests.csproj" />
   <Project Path="ApexPost.CounterTerminal.Tests/ApexPost.CounterTerminal.Tests.csproj" />
   <Project Path="ApexPost.IntegrationTests/ApexPost.IntegrationTests.csproj" />
   <Project Path="ApexPost.Courier.Offline/ApexPost.Courier.Offline.csproj" />

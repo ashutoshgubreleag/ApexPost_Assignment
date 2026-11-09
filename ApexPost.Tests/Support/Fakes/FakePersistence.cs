@@ -1,6 +1,7 @@
 using ApexPost.Models.Domain;
 using ApexPost.Models.ValueObjects;
 using ApexPost.Services.Abstractions;
+using ApexPost.Services.Tracking;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ApexPost.Tests.Support.Fakes;

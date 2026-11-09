@@ -15,7 +15,7 @@ using (var tokenHttp = new HttpClient { BaseAddress = baseAddress })
 {
     try
     {
-        var tokenResponse = await tokenHttp.PostAsJsonAsync("dev/token", new { courierId = "C-1001", role = "Admin" });
+        var tokenResponse = await tokenHttp.PostAsJsonAsync("dev/token", new { courierId = "C-1001", role = "Courier" });
         tokenResponse.EnsureSuccessStatusCode();
         var token = await tokenResponse.Content.ReadFromJsonAsync<DevToken>();
         accessToken = token?.AccessToken ?? throw new InvalidOperationException("The token endpoint returned no token.");
@@ -27,8 +27,17 @@ using (var tokenHttp = new HttpClient { BaseAddress = baseAddress })
     }
 }
 
+// Delete is Admin-only, scan upload is Courier-only: a second token for the admin call.
+string adminToken;
+using (var adminHttp = new HttpClient { BaseAddress = baseAddress })
+{
+    var adminResponse = await adminHttp.PostAsJsonAsync("dev/token", new { courierId = "A-1", role = "Admin" });
+    adminResponse.EnsureSuccessStatusCode();
+    adminToken = (await adminResponse.Content.ReadFromJsonAsync<DevToken>())!.AccessToken;
+}
+
 var services = new ServiceCollection();
-services.AddApexPostClient(baseAddress).AddHttpMessageHandler(() => new BearerHandler(accessToken));
+services.AddApexPostClient(baseAddress).AddHttpMessageHandler(() => new BearerHandler(accessToken, adminToken));
 await using var provider = services.BuildServiceProvider();
 var api = provider.GetRequiredService<IApexPostClient>();
 
@@ -83,7 +92,7 @@ try
 }
 catch (ApiException ex)
 {
-    Console.WriteLine($"API error HTTP {ex.StatusCode}: {ex.Response}");
+    Console.WriteLine($"API error HTTP {ex.StatusCode}: {ex.Response} | {ex.Message} | inner: {ex.InnerException}");
     return 1;
 }
 catch (HttpRequestException ex)
@@ -96,11 +105,11 @@ return 0;
 
 internal sealed record DevToken(string AccessToken, DateTimeOffset ExpiresAtUtc);
 
-internal sealed class BearerHandler(string accessToken) : DelegatingHandler
+internal sealed class BearerHandler(string courierToken, string adminToken) : DelegatingHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", request.Method == HttpMethod.Delete ? adminToken : courierToken);
         return base.SendAsync(request, cancellationToken);
     }
 }

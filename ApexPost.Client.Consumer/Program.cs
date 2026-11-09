@@ -1,5 +1,6 @@
 #if HAS_GENERATED_CLIENT
 using ApexPost.Client;
+using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 
 // Consumer of the generated SDK. Needs the API running (dotnet run --project .\ApexPost.Api --launch-profile https).
@@ -7,8 +8,27 @@ using Microsoft.Extensions.DependencyInjection;
 // trust the dev certificate once with `dotnet dev-certs https --trust`.
 var baseAddress = new Uri(args.FirstOrDefault() ?? Environment.GetEnvironmentVariable("APEXPOST_API_URL") ?? "https://localhost:7153/");
 
+// Since Part D every shipment route needs a bearer token. Development only: ask the dev token endpoint for an Admin token
+// (it stands in for the identity provider; it does not exist outside Development).
+string accessToken;
+using (var tokenHttp = new HttpClient { BaseAddress = baseAddress })
+{
+    try
+    {
+        var tokenResponse = await tokenHttp.PostAsJsonAsync("dev/token", new { courierId = "C-1001", role = "Admin" });
+        tokenResponse.EnsureSuccessStatusCode();
+        var token = await tokenResponse.Content.ReadFromJsonAsync<DevToken>();
+        accessToken = token?.AccessToken ?? throw new InvalidOperationException("The token endpoint returned no token.");
+    }
+    catch (HttpRequestException ex)
+    {
+        Console.WriteLine($"Could not get a token from {baseAddress}: {ex.Message}. Is ApexPost.Api running in Development?");
+        return 2;
+    }
+}
+
 var services = new ServiceCollection();
-services.AddApexPostClient(baseAddress);
+services.AddApexPostClient(baseAddress).AddHttpMessageHandler(() => new BearerHandler(accessToken));
 await using var provider = services.BuildServiceProvider();
 var api = provider.GetRequiredService<IApexPostClient>();
 
@@ -73,6 +93,17 @@ catch (HttpRequestException ex)
 }
 
 return 0;
+
+internal sealed record DevToken(string AccessToken, DateTimeOffset ExpiresAtUtc);
+
+internal sealed class BearerHandler(string accessToken) : DelegatingHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+        return base.SendAsync(request, cancellationToken);
+    }
+}
 #else
 Console.WriteLine("The generated client is missing. Run scripts\\export-contracts.ps1, then scripts\\generate-client.ps1, then build again.");
 return 3;

@@ -1,4 +1,4 @@
-# ApexPost.Api notes (Week 4, Parts B and C)
+# ApexPost.Api notes (Week 4, Parts B, C and D)
 
 REST API for courier shipment tracking. Controllers are thin (bind, call `IShipmentTrackingService`,
 return a result); every rule lives in `ApexPost.Services/Tracking`. It runs on the Week 3 stack:
@@ -9,16 +9,20 @@ EF Core 10, SQL Server `ApexPostDb`, the same DI extension methods as the MVC ap
 Base path `/api/v2/shipments` (current) and `/api/v1/shipments` (deprecated, same routes, flat responses with a numeric status; see [VERSIONING.md](VERSIONING.md)). The tables below show the v2 paths; replace `v2` with `v1` for the deprecated version. The unversioned `/api/v2/shipments` no longer exists (404). `{trackingNumber}` must match `^APX-\d{8}$` (route constraint; anything else is a 404).
 Request bodies must be `application/json` (otherwise 415). Every error is `application/problem+json`.
 
-| Verb | Route | Route name (v2; v1 adds a `V1` suffix) | Purpose | Success | Errors |
-| --- | --- | --- | --- | --- | --- |
-| GET | `/api/v2/shipments?page=&pageSize=&status=&city=` | `ListShipments` | Paged, filtered list (newest first). `pageSize` default 20, capped at 50 | 200 | 400 (unknown `status`), 500 |
-| GET | `/api/v2/shipments/{trackingNumber}` | `GetShipment` | One shipment | 200 | 404, 500 |
-| POST | `/api/v2/shipments` | `CreateShipment` | Create a shipment in status `Created` | 201 + `Location` | 400, 409 (duplicate tracking number), 415, 500 |
-| PUT | `/api/v2/shipments/{trackingNumber}` | `UpdateShipment` | Replace editable details (not the tracking number). Only while `Created` | 200 | 400, 404, 409 (already picked up), 415, 500 |
-| PATCH | `/api/v2/shipments/{trackingNumber}/status` | `UpdateShipmentStatus` | Move to the next status | 200 | 400, 404, 409 (illegal transition), 415, 500 |
-| DELETE | `/api/v2/shipments/{trackingNumber}` | `DeleteShipment` | Delete. Only while `Created` | 204 | 404, 409 (not `Created`), 500 |
-| POST | `/api/v2/shipments/{trackingNumber}/scans` | `UploadScans` | Bulk upload of offline scans (idempotent) | 200 | 400, 404, 415, 500 |
-| GET | `/api/v2/shipments/{trackingNumber}/scans` | `GetScans` | Scan history, oldest first | 200 | 404, 500 |
+| Verb | Route | Route name (v2; v1 adds a `V1` suffix) | Auth (Part D) | Purpose | Success | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/v2/shipments?page=&pageSize=&status=&city=` | `ListShipments` | any signed-in user | Paged, filtered list (newest first). `pageSize` default 20, capped at 50 | 200 | 400 (unknown `status`), 401, 500 |
+| GET | `/api/v2/shipments/{trackingNumber}` | `GetShipment` | any signed-in user | One shipment | 200 | 401, 404, 500 |
+| POST | `/api/v2/shipments` | `CreateShipment` | any signed-in user | Create a shipment in status `Created` | 201 + `Location` | 400, 401, 409 (duplicate tracking number), 415, 500 |
+| PUT | `/api/v2/shipments/{trackingNumber}` | `UpdateShipment` | any signed-in user | Replace editable details (not the tracking number). Only while `Created` | 200 | 400, 401, 404, 409 (already picked up), 415, 500 |
+| PATCH | `/api/v2/shipments/{trackingNumber}/status` | `UpdateShipmentStatus` | role **Courier** | Move to the next status | 200 | 400, 401, 403, 404, 409 (illegal transition), 415, 500 |
+| DELETE | `/api/v2/shipments/{trackingNumber}` | `DeleteShipment` | role **Admin** | Delete. Only while `Created` | 204 | 401, 403, 404, 409 (not `Created`), 500 |
+| POST | `/api/v2/shipments/{trackingNumber}/scans` | `UploadScans` | role **Courier**, and any `courierId` in the body must equal the token's `courierId` | Bulk upload of offline scans (idempotent) | 200 | 400, 401, 403, 404, 415, 500 |
+| GET | `/api/v2/shipments/{trackingNumber}/scans` | `GetScans` | any signed-in user | Scan history, oldest first | 200 | 401, 404, 500 |
+| GET | `/api/v2/partner/shipments/{trackingNumber}` (v2 only) | `GetPartnerShipment` | **`X-Api-Key`** header (no JWT) | Read-only shipment for partner systems | 200 | 401 (missing/invalid key), 404, 500 (no key configured) |
+| POST | `/dev/token` (Development only, not versioned) | `IssueDevToken` | anonymous | Issue a test JWT `{ "courierId", "role" }` -> `{ "accessToken", "expiresAtUtc" }` | 200 | 400 |
+
+"Any signed-in user" means a valid bearer JWT with role `Courier` or `Admin`. Everything not marked anonymous requires authentication (fallback policy). Authentication design, 401/403 shapes and secrets: [SECURITY.md](SECURITY.md).
 
 ## Status codes
 
@@ -27,6 +31,8 @@ Request bodies must be `application/json` (otherwise 415). Every error is `appli
 | 200 | Successful read, update, status change, or scan upload (the body says what was stored) |
 | 201 | Shipment created; `Location` points at `GET /api/shipments/{trackingNumber}` (`CreatedAtAction`) |
 | 204 | Shipment deleted |
+| 401 | No, invalid or expired bearer token (or a bad `X-Api-Key` on the partner route). ProblemDetails with `traceId`; bearer 401s carry `WWW-Authenticate: Bearer` |
+| 403 | Valid token, wrong role; or a scan whose `courierId` differs from the token's (`errorCode: COURIER_MISMATCH`) |
 | 400 | Validation failed: `ValidationProblemDetails` with an `errors` object per field |
 | 404 | Unknown tracking number (or a tracking number that does not match `APX-` + 8 digits) |
 | 409 | Duplicate tracking number, illegal status transition, editing or deleting a shipment that is no longer `Created`. The body has an `errorCode` (`DUPLICATE_TRACKING_NUMBER`, `INVALID_STATUS_TRANSITION`, `SHIPMENT_LOCKED`, `SHIPMENT_NOT_DELETABLE`, `CONCURRENCY_CONFLICT`, `DUPLICATE_KEY`) |
@@ -40,6 +46,7 @@ Request bodies must be `application/json` (otherwise 415). Every error is `appli
 * A duplicate tracking number is a 409, including when two requests race (the unique index `UQ_TrackedShipments_TrackingNumber` decides).
 * `pageSize` above 50 is reduced to 50; zero or negative becomes 20; `page` below 1 becomes 1.
 * Validation (DTO attributes): tracking number `^APX-\d{8}$`; weight 0.1 to 70 kg; recipient name, phone, address, city required; phone `+`/digits/spaces/dashes/brackets, 8 to 20 characters.
+* `ScanItemRequest.courierId` (Part D, optional, max 50): if present it must equal the caller's `courierId` claim, otherwise 403. If omitted the scan is taken to belong to the caller. It is not stored; it only proves ownership at upload time.
 * Custom rules (`IValidatableObject` on `ScanItemRequest`): a scan time cannot be in the future (one minute of clock drift tolerated); a `Delivered` scan needs `recipientSignatureName`.
 
 ## Idempotent scan upload
@@ -71,7 +78,14 @@ dotnet ef database update --project .\ApexPost.Database
 dotnet run --project .\ApexPost.Api --launch-profile https      # https://localhost:7153
 ```
 
-Then open `ApexPost.Api/ApexPost.Api.http`. Tests (no database needed): `dotnet test .\ApexPost.Api.Tests`.
+Part D also needs the JWT signing key (a secret, never committed) and, for the partner route, an API key:
+
+```powershell
+dotnet user-secrets set "Jwt:SigningKey" "REPLACE-WITH-AT-LEAST-32-RANDOM-CHARACTERS" --project .\ApexPost.Api
+dotnet user-secrets set "Partner:ApiKeys:0" "replace-with-a-long-random-partner-key" --project .\ApexPost.Api
+```
+
+The API refuses to start without a valid `Jwt:SigningKey`. Then open `ApexPost.Api/ApexPost.Api.http` (request 0 fetches tokens). Tests (no database needed): `dotnet test .\ApexPost.Api.Tests`.
 
 
 ## OpenAPI and Swagger UI (Part C)

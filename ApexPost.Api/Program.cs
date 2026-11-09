@@ -1,5 +1,6 @@
 using ApexPost.Api.Infrastructure;
 using ApexPost.Api.OpenApi;
+using ApexPost.Api.Security;
 using ApexPost.Repositories;
 using ApexPost.Services;
 using ApexPost.Utilities.Middleware;
@@ -36,6 +37,7 @@ builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 // The OpenAPI generator reads the HTTP JSON options, so give it the same enum rule: schemas show string enums.
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddApexPostSecurity();
 builder.Services.AddApexPostVersioning();
 builder.Services.AddApexPostOpenApi();
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = ProblemDetailsCustomizer.Apply);
@@ -46,20 +48,30 @@ var app = builder.Build();
 app.UseMiddleware<CorrelationIdMiddleware>();   // correlation id on every response and log line
 app.UseExceptionHandler();                      // unhandled exceptions -> ApiExceptionHandler -> 500 ProblemDetails
 app.UseStatusCodePages();                       // bodiless 404/405/415 -> ProblemDetails
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts(); // tells browsers to use HTTPS only; never in Development (it would stick to localhost)
+}
+
 app.UseHttpsRedirection();
 
 if (app.Environment.IsDevelopment())
 {
     // Contract documents and the viewer are Development-only: nothing about the API surface is published by accident.
-    app.MapOpenApi();   // /openapi/v1.json and /openapi/v2.json
+    app.MapOpenApi().AllowAnonymous();   // /openapi/v1.json and /openapi/v2.json
+    app.MapDevToken();                    // POST /dev/token: Development only, 404 everywhere else
     app.UseSwaggerUI(options =>
     {
         options.RoutePrefix = "swagger";
         options.DocumentTitle = "ApexPost Logistics API";
+        options.EnablePersistAuthorization(); // keep the pasted token across page reloads
         options.SwaggerEndpoint("/openapi/v2.json", "v2");
         options.SwaggerEndpoint("/openapi/v1.json", "v1 (deprecated)");
     });
 }
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 

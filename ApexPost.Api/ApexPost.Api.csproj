@@ -11,6 +11,7 @@
     <PackageReference Include="Asp.Versioning.Mvc" Version="8.1.0" />
     <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
     <!-- Built-in OpenAPI generator (also reads the XML doc comments of the controllers and DTOs). -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
     <!-- Swagger UI ONLY: the static viewer. Swashbuckle's document generator is deliberately not used. -->
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="9.0.3" />

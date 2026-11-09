@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using ApexPost.Api.Security;
 using ApexPost.Api.Tests.Support;
 using ApexPost.Services.Abstractions;
 using Microsoft.AspNetCore.TestHost;
@@ -19,12 +20,14 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     private static int _counter = 50_000_000;
 
     private readonly ApiFactory _factory;
-    private readonly HttpClient _client;
+    private readonly HttpClient _client;   // signed in as a Courier
+    private readonly HttpClient _admin;    // signed in as an Admin (the only role that may delete)
 
     public ApiEndpointTests(ApiFactory factory)
     {
         _factory = factory;
-        _client = factory.CreateClient();
+        _client = factory.CreateClient().SignedIn(factory);
+        _admin = factory.CreateClient().SignedIn(factory, ApiRoles.Admin, "A-1");
     }
 
     private static string NextTn() => $"APX-{Interlocked.Increment(ref _counter)}";
@@ -218,7 +221,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
 
         Assert.Equal(HttpStatusCode.NotFound, (await _client.PutAsync(unknown, Json(UpdateBody()))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.PatchAsync($"{unknown}/status", Json("""{"status":"PickedUp"}"""))).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync(unknown)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync(unknown)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"{unknown}/scans")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync($"{unknown}/scans", Json(ScanBody(Guid.NewGuid(), "PickedUp")))).StatusCode);
     }
@@ -268,7 +271,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     {
         var tn = await CreateShipmentAsync();
 
-        var deleted = await _client.DeleteAsync($"/api/v1/shipments/{tn}");
+        var deleted = await _admin.DeleteAsync($"/api/v1/shipments/{tn}");
         var after = await _client.GetAsync($"/api/v1/shipments/{tn}");
 
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
@@ -281,7 +284,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         var tn = await CreateShipmentAsync();
         await PatchStatusAsync(tn, "PickedUp");
 
-        var response = await _client.DeleteAsync($"/api/v1/shipments/{tn}");
+        var response = await _admin.DeleteAsync($"/api/v1/shipments/{tn}");
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync($"/api/v1/shipments/{tn}")).StatusCode);
@@ -364,7 +367,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
             services.RemoveAll<ITrackingQueries>();
             services.AddScoped<ITrackingQueries, ThrowingQueries>();
         }));
-        using var client = failing.CreateClient();
+        using var client = failing.CreateClient().SignedIn(_factory);
 
         var response = await client.GetAsync("/api/v1/shipments/APX-10000001");
         var text = await response.Content.ReadAsStringAsync();

@@ -157,6 +157,25 @@ Across the app, business-rule and validation failures are **400** (with a rule c
 `STOCK_INSUFFICIENT`), and conflicting changes are **409**: a `rowversion` conflict, or a
 unique-key violation such as the same staff e-mail saved twice at once. See DESIGN.md §5.1.
 
+## Courier API security: JWT, roles, partner API key (Week 4 Part D)
+
+Design, OAuth2 background and the production checklist are in **[SECURITY.md](SECURITY.md)**. To run it locally:
+
+```powershell
+# one-time: secrets live in user-secrets, never in the repo (use your own random values)
+dotnet user-secrets set "Jwt:SigningKey" "REPLACE-WITH-AT-LEAST-32-RANDOM-CHARACTERS" --project .\ApexPost.Api
+dotnet user-secrets set "Partner:ApiKeys:0" "replace-with-a-long-random-partner-key" --project .\ApexPost.Api
+dotnet dev-certs https --trust
+dotnet run --project .\ApexPost.Api --launch-profile https
+
+# get a Development-only token (Courier or Admin) and call the API with it
+$token = (Invoke-RestMethod -Method Post https://localhost:7153/dev/token -ContentType application/json -Body '{"courierId":"C-1001","role":"Courier"}').accessToken
+Invoke-RestMethod https://localhost:7153/api/v2/shipments -Headers @{ Authorization = "Bearer $token" }
+```
+
+Roles: `Courier` uploads scans and changes status, `Admin` deletes shipments, any signed-in user reads. No token is a 401, the wrong role a 403 (both ProblemDetails).
+In Swagger UI (`/swagger`) press **Authorize** and paste the token. `ApexPost.Api.http` has a ready-made demo of every 401/403 case.
+
 ## Courier API: OpenAPI, versions and the client SDK (Week 4 Part C)
 
 ```powershell

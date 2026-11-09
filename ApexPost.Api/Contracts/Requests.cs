@@ -121,6 +121,14 @@ public sealed class ScanItemRequest : IValidatableObject
     [StringLength(100)]
     public string? RecipientSignatureName { get; set; }
 
+    /// <summary>
+    /// Optional: the courier who recorded the scan. When present it must equal the <c>courierId</c> claim of the caller's token,
+    /// otherwise the upload is refused with 403. When omitted, the scan is taken to belong to the caller.
+    /// </summary>
+    /// <example>C-1001</example>
+    [StringLength(50)]
+    public string? CourierId { get; set; }
+
     /// <summary>Custom rules that span several properties (single-property rules are attributes above).</summary>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

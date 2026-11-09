@@ -1,3 +1,5 @@
+using ApexPost.Api.Security;
+using Microsoft.AspNetCore.Authorization;
 using ApexPost.Api.Contracts;
 using ApexPost.Services.Abstractions;
 using Asp.Versioning;
@@ -8,6 +10,7 @@ namespace ApexPost.Api.Controllers;
 
 /// <summary>Scan history and the idempotent bulk upload used by the courier app. The scan contract is identical in v1 and v2, so one controller serves both versions. Thin: all rules are in <see cref="IShipmentTrackingService"/>.</summary>
 [ApiController]
+[Authorize]
 [ApiVersion("1.0", Deprecated = true)]
 [ApiVersion("2.0")]
 [Route("api/v{version:apiVersion}/shipments/{trackingNumber:regex(^APX-\\d{{8}}$)}/scans")]
@@ -25,9 +28,12 @@ public sealed class ScansController(IShipmentTrackingService shipments) : Contro
     /// <param name="cancellationToken">Cancelled when the caller disconnects.</param>
     /// <response code="200">The batch was processed; the body says how many scans were accepted, skipped as duplicates and rejected.</response>
     /// <response code="400">The body failed validation (for example a scan in the future, or a Delivered scan without a signature name).</response>
+    /// <response code="403">Another role, or a scan recorded under a different courierId than the caller's token.</response>
     /// <response code="404">No shipment has this tracking number.</response>
     /// <response code="415">The request is not application/json.</response>
     /// <response code="500">Unexpected error.</response>
+    [Authorize(Roles = ApiRoles.Courier)]
+    [ServiceFilter(typeof(ScanOwnershipFilter))]
     [HttpPost(Name = "UploadScans")]
     [Consumes("application/json")]
     [EndpointSummary("Upload scans (idempotent)")]

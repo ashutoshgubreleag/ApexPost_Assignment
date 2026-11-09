@@ -1,3 +1,5 @@
+using ApexPost.Api.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -16,6 +18,12 @@ internal sealed class ApexPostOpenApiTransformer : IOpenApiDocumentTransformer, 
 
     /// <inheritdoc cref="V1"/>
     public const string V2 = "v2";
+
+    /// <summary>Name of the bearer (JWT) security scheme.</summary>
+    public const string BearerScheme = "Bearer";
+
+    /// <summary>Name of the partner API-key security scheme.</summary>
+    public const string ApiKeyScheme = "PartnerApiKey";
 
     private static bool IsDeprecated(string? documentName) => string.Equals(documentName, V1, StringComparison.Ordinal);
 
@@ -39,6 +47,28 @@ internal sealed class ApexPostOpenApiTransformer : IOpenApiDocumentTransformer, 
                 Email = "api-team@apexpost.example",
             },
         };
+
+        // Security schemes (Microsoft.OpenApi 2.x object model). Swagger UI turns these into the Authorize button.
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes[BearerScheme] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            Description = "JWT access token. In Development get one from POST /dev/token, then paste only the token (Swagger UI adds the Bearer prefix).",
+        };
+        if (!deprecated)
+        {
+            document.Components.SecuritySchemes[ApiKeyScheme] = new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.ApiKey,
+                Name = PartnerApiKeyFilter.HeaderName,
+                In = ParameterLocation.Header,
+                Description = "Partner API key, for the read-only partner route only. Server-to-server; never put it in a mobile app or a browser.",
+            };
+        }
+
         return Task.CompletedTask;
     }
 
@@ -53,6 +83,34 @@ internal sealed class ApexPostOpenApiTransformer : IOpenApiDocumentTransformer, 
             operation.Deprecated = true;
         }
 
+        IList<object> metadata = context.Description.ActionDescriptor.EndpointMetadata ?? [];
+        if (metadata.OfType<PartnerApiKeyAttribute>().Any())
+        {
+            AddRequirement(operation, ApiKeyScheme);
+            AddResponse(operation, "401", "Missing or invalid X-Api-Key.");
+        }
+        else if (metadata.OfType<IAuthorizeData>().Any() && !metadata.OfType<IAllowAnonymous>().Any())
+        {
+            AddRequirement(operation, BearerScheme);
+            AddResponse(operation, "401", "Missing, invalid or expired bearer token.");
+            if (metadata.OfType<IAuthorizeData>().Any(a => !string.IsNullOrEmpty(a.Roles)))
+            {
+                AddResponse(operation, "403", "The caller's role is not allowed (or, for scan upload, the courierId does not match the token).");
+            }
+        }
+
         return Task.CompletedTask;
+    }
+
+    private static void AddRequirement(OpenApiOperation operation, string schemeName)
+    {
+        operation.Security ??= [];
+        operation.Security.Add(new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference(schemeName)] = [] });
+    }
+
+    private static void AddResponse(OpenApiOperation operation, string code, string description)
+    {
+        operation.Responses ??= new OpenApiResponses();
+        operation.Responses.TryAdd(code, new OpenApiResponse { Description = description });
     }
 }

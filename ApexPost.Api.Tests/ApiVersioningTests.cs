@@ -20,7 +20,7 @@ public sealed class ApiVersioningTests : IClassFixture<ApiFactory>
     public ApiVersioningTests(ApiFactory factory)
     {
         _factory = factory;
-        _client = factory.CreateClient();
+        _client = factory.CreateClient().SignedIn(factory);
     }
 
     private static StringContent Json(string body) => new(body, Encoding.UTF8, "application/json");
@@ -147,7 +147,7 @@ public sealed class ApiVersioningTests : IClassFixture<ApiFactory>
     // ---- OpenAPI documents (Development only, so these tests host the API as Development) ----
 
     private HttpClient DevelopmentClient() =>
-        _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Development")).CreateClient();
+        _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Development")).CreateClient().SignedIn(_factory);
 
     [Fact]
     public async Task OpenApiDocuments_ExistPerVersionWithTheRightPaths()
@@ -192,7 +192,7 @@ public sealed class ApiVersioningTests : IClassFixture<ApiFactory>
         using var v2 = JsonDocument.Parse(text);
 
         var ids = Operations(v2).Select(op => op.GetProperty("operationId").GetString()).ToList();
-        var expected = new[] { "ListShipments", "GetShipment", "CreateShipment", "UpdateShipment", "UpdateShipmentStatus", "DeleteShipment", "UploadScans", "GetScans" };
+        var expected = new[] { "ListShipments", "GetShipment", "GetPartnerShipment", "CreateShipment", "UpdateShipment", "UpdateShipmentStatus", "DeleteShipment", "UploadScans", "GetScans" };
         Assert.Equal(expected.Order(StringComparer.Ordinal), ids.Order(StringComparer.Ordinal));
         Assert.Contains("\"OutForDelivery\"", text, StringComparison.Ordinal); // status is documented as a string enum
         Assert.Contains("latestScan", text, StringComparison.Ordinal);

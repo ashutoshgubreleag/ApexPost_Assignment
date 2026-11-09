@@ -1,3 +1,5 @@
+using ApexPost.Api.Security;
+using Microsoft.AspNetCore.Authorization;
 using ApexPost.Api.Contracts;
 using ApexPost.Api.Contracts.V1;
 using Asp.Versioning;
@@ -14,6 +16,7 @@ namespace ApexPost.Api.Controllers.V1;
 /// HTTP result. Every business rule (duplicates, status transitions, delete rule, paging limits) lives in the service.
 /// </summary>
 [ApiController]
+[Authorize]
 [ApiVersion("1.0", Deprecated = true)]
 [Route("api/v{version:apiVersion}/shipments")]
 [Tags("Shipments")]
@@ -115,6 +118,7 @@ public sealed class ShipmentsV1Controller(IShipmentTrackingService shipments) : 
     /// <response code="409">The transition is not allowed (Created, PickedUp, InTransit, OutForDelivery, then Delivered or Failed).</response>
     /// <response code="415">The request is not application/json.</response>
     /// <response code="500">Unexpected error.</response>
+    [Authorize(Roles = ApiRoles.Courier)]
     [HttpPatch($"{TrackingNumberRoute}/status", Name = "UpdateShipmentStatusV1")]
     [Consumes("application/json")]
     [EndpointSummary("Change shipment status")]
@@ -134,6 +138,7 @@ public sealed class ShipmentsV1Controller(IShipmentTrackingService shipments) : 
     /// <response code="404">No shipment has this tracking number.</response>
     /// <response code="409">The shipment is no longer in status Created.</response>
     /// <response code="500">Unexpected error.</response>
+    [Authorize(Roles = ApiRoles.Admin)]
     [HttpDelete(TrackingNumberRoute, Name = "DeleteShipmentV1")]
     [EndpointSummary("Delete a shipment")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

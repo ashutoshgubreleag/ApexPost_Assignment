@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "nswag.consolecore": {
+      "version": "14.2.0",
+      "commands": [ "nswag" ],
+      "rollForward": false
+    }
+  }
+}

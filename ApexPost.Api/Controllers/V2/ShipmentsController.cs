@@ -1,18 +1,21 @@
 using ApexPost.Api.Contracts;
+using ApexPost.Api.Contracts.V2;
+using Asp.Versioning;
 using ApexPost.Models.Domain;
 using ApexPost.Services.Abstractions;
 using ApexPost.Services.Tracking;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
-namespace ApexPost.Api.Controllers;
+namespace ApexPost.Api.Controllers.V2;
 
 /// <summary>
-/// Shipments. Thin by design: bind the input, call <see cref="IShipmentTrackingService"/>, return an
+/// Shipments, API version 2 (nested recipient, latest scan, string status). Thin by design: bind the input, call <see cref="IShipmentTrackingService"/>, return an
 /// HTTP result. Every business rule (duplicates, status transitions, delete rule, paging limits) lives in the service.
 /// </summary>
 [ApiController]
-[Route("api/shipments")]
+[ApiVersion("2.0")]
+[Route("api/v{version:apiVersion}/shipments")]
 [Tags("Shipments")]
 public sealed class ShipmentsController(IShipmentTrackingService shipments) : ControllerBase
 {
@@ -41,7 +44,7 @@ public sealed class ShipmentsController(IShipmentTrackingService shipments) : Co
         CancellationToken cancellationToken = default)
     {
         var result = await shipments.ListAsync(new TrackingListQuery(page, pageSize, status, city), cancellationToken);
-        return ApiMapper.ToResponse(result);
+        return ApiMapper.ToV2(result);
     }
 
     /// <summary>Gets one shipment.</summary>
@@ -56,7 +59,7 @@ public sealed class ShipmentsController(IShipmentTrackingService shipments) : Co
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError, "application/problem+json")]
     public async Task<ActionResult<ShipmentResponse>> GetShipment(string trackingNumber, CancellationToken cancellationToken) =>
-        ApiMapper.ToResponse(await shipments.GetAsync(trackingNumber, cancellationToken));
+        ApiMapper.ToV2(await shipments.GetAsync(trackingNumber, cancellationToken));
 
     /// <summary>Creates a shipment in status Created.</summary>
     /// <param name="request">The shipment to create.</param>
@@ -77,7 +80,7 @@ public sealed class ShipmentsController(IShipmentTrackingService shipments) : Co
     public async Task<ActionResult<ShipmentResponse>> CreateShipment(CreateShipmentRequest request, CancellationToken cancellationToken)
     {
         var created = await shipments.CreateAsync(new CreateTrackedShipmentCommand(request.TrackingNumber, ApiMapper.ToDetails(request)), cancellationToken);
-        return CreatedAtAction(nameof(GetShipment), new { trackingNumber = created.TrackingNumber }, ApiMapper.ToResponse(created));
+        return CreatedAtRoute("GetShipment", new { version = "2", trackingNumber = created.TrackingNumber }, ApiMapper.ToV2(created));
     }
 
     /// <summary>Replaces the editable details of a shipment.</summary>
@@ -100,7 +103,7 @@ public sealed class ShipmentsController(IShipmentTrackingService shipments) : Co
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status415UnsupportedMediaType, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError, "application/problem+json")]
     public async Task<ActionResult<ShipmentResponse>> UpdateShipment(string trackingNumber, UpdateShipmentRequest request, CancellationToken cancellationToken) =>
-        ApiMapper.ToResponse(await shipments.UpdateAsync(trackingNumber, ApiMapper.ToDetails(request), cancellationToken));
+        ApiMapper.ToV2(await shipments.UpdateAsync(trackingNumber, ApiMapper.ToDetails(request), cancellationToken));
 
     /// <summary>Moves a shipment to its next status.</summary>
     /// <param name="trackingNumber">Tracking number, for example APX-10000001.</param>
@@ -122,7 +125,7 @@ public sealed class ShipmentsController(IShipmentTrackingService shipments) : Co
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status415UnsupportedMediaType, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError, "application/problem+json")]
     public async Task<ActionResult<ShipmentResponse>> UpdateShipmentStatus(string trackingNumber, UpdateStatusRequest request, CancellationToken cancellationToken) =>
-        ApiMapper.ToResponse(await shipments.ChangeStatusAsync(trackingNumber, request.Status!.Value, cancellationToken));
+        ApiMapper.ToV2(await shipments.ChangeStatusAsync(trackingNumber, request.Status!.Value, cancellationToken));
 
     /// <summary>Deletes a shipment. Allowed only while its status is Created.</summary>
     /// <param name="trackingNumber">Tracking number, for example APX-10000001.</param>

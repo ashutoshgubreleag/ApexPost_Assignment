@@ -2,32 +2,7 @@ using ApexPost.Models.Domain;
 
 namespace ApexPost.Api.Contracts;
 
-/// <summary>A shipment as returned by the API.</summary>
-/// <param name="TrackingNumber">Tracking number, for example <c>APX-10000001</c>.</param>
-/// <param name="RecipientName">Name of the person receiving the parcel.</param>
-/// <param name="RecipientPhone">Recipient phone number.</param>
-/// <param name="Address">Delivery street address.</param>
-/// <param name="City">Delivery city.</param>
-/// <param name="WeightKg">Parcel weight in kilograms.</param>
-/// <param name="Status">Lifecycle status (Created, PickedUp, InTransit, OutForDelivery, Delivered, Failed).</param>
-/// <param name="CreatedAtUtc">When the shipment was created (UTC).</param>
-public sealed record ShipmentResponse(
-    string TrackingNumber,
-    string RecipientName,
-    string RecipientPhone,
-    string Address,
-    string City,
-    decimal WeightKg,
-    TrackingStatus Status,
-    DateTimeOffset CreatedAtUtc);
-
-/// <summary>One page of shipments.</summary>
-/// <param name="Items">The shipments on this page.</param>
-/// <param name="Page">The page number returned (1-based).</param>
-/// <param name="PageSize">The page size used (never more than 50).</param>
-/// <param name="TotalCount">How many shipments match the filter in total.</param>
-/// <param name="TotalPages">How many pages there are at this page size.</param>
-public sealed record ShipmentPageResponse(IReadOnlyList<ShipmentResponse> Items, int Page, int PageSize, int TotalCount, int TotalPages);
+// Scan contracts are shared by v1 and v2: they are unchanged between the versions.
 
 /// <summary>One scan in a shipment's history.</summary>
 /// <param name="ScanId">The scan id generated on the courier's device.</param>

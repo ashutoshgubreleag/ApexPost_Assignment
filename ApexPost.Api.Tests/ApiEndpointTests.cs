@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace ApexPost.Api.Tests;
 
 /// <summary>
-/// The real HTTP pipeline against the in-memory store: status codes, Location header, ProblemDetails,
+/// The real HTTP pipeline (API version 1, the deprecated flat contract) against the in-memory store: status codes, Location header, ProblemDetails,
 /// validation and the global exception handler.
 /// </summary>
 public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
@@ -61,13 +61,13 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     private async Task<string> CreateShipmentAsync(string city = "Melbourne")
     {
         var tn = NextTn();
-        var response = await _client.PostAsync("/api/shipments", Json(CreateBody(tn, city)));
+        var response = await _client.PostAsync("/api/v1/shipments", Json(CreateBody(tn, city)));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return tn;
     }
 
     private Task<HttpResponseMessage> PatchStatusAsync(string tn, string status) =>
-        _client.PatchAsync($"/api/shipments/{tn}/status", Json($$"""{"status":"{{status}}"}"""));
+        _client.PatchAsync($"/api/v1/shipments/{tn}/status", Json($$"""{"status":"{{status}}"}"""));
 
     // ---- 201 / 200 ----
 
@@ -76,14 +76,14 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     {
         var tn = NextTn();
 
-        var response = await _client.PostAsync("/api/shipments", Json(CreateBody(tn)));
+        var response = await _client.PostAsync("/api/v1/shipments", Json(CreateBody(tn)));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(response.Headers.Location);
-        Assert.EndsWith($"/api/shipments/{tn}", response.Headers.Location!.ToString(), StringComparison.Ordinal);
+        Assert.EndsWith($"/api/v1/shipments/{tn}", response.Headers.Location!.ToString(), StringComparison.Ordinal);
         using var body = await ReadJsonAsync(response);
         Assert.Equal(tn, body.RootElement.GetProperty("trackingNumber").GetString());
-        Assert.Equal("Created", body.RootElement.GetProperty("status").GetString());
+        Assert.Equal(0, body.RootElement.GetProperty("status").GetInt32()); // v1: numeric status (0 = Created)
         Assert.Equal("Melbourne", body.RootElement.GetProperty("city").GetString());
     }
 
@@ -91,7 +91,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     public async Task Get_LocationHeaderOfACreatedShipment_ReturnsIt()
     {
         var tn = NextTn();
-        var created = await _client.PostAsync("/api/shipments", Json(CreateBody(tn)));
+        var created = await _client.PostAsync("/api/v1/shipments", Json(CreateBody(tn)));
 
         var response = await _client.GetAsync(created.Headers.Location);
 
@@ -105,7 +105,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     {
         var tn = await CreateShipmentAsync();
 
-        var response = await _client.PutAsync($"/api/shipments/{tn}", Json(UpdateBody()));
+        var response = await _client.PutAsync($"/api/v1/shipments/{tn}", Json(UpdateBody()));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = await ReadJsonAsync(response);
@@ -122,7 +122,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = await ReadJsonAsync(response);
-        Assert.Equal("PickedUp", body.RootElement.GetProperty("status").GetString());
+        Assert.Equal(1, body.RootElement.GetProperty("status").GetInt32()); // 1 = PickedUp
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         var city = $"Cityville{NextTn()}";
         await CreateShipmentAsync(city);
 
-        var response = await _client.GetAsync($"/api/shipments?pageSize=500&city={city}");
+        var response = await _client.GetAsync($"/api/v1/shipments?pageSize=500&city={city}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = await ReadJsonAsync(response);
@@ -145,7 +145,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Post_InvalidBody_Returns400ValidationProblemDetails()
     {
-        var response = await _client.PostAsync("/api/shipments", Json("""{"trackingNumber":"BAD","recipientName":"","weightKg":100}"""));
+        var response = await _client.PostAsync("/api/v1/shipments", Json("""{"trackingNumber":"BAD","recipientName":"","weightKg":100}"""));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(ProblemJson, response.Content.Headers.ContentType?.MediaType);
@@ -169,14 +169,14 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
 
     [Fact]
     public async Task List_UnknownStatusFilter_Returns400() =>
-        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/shipments?status=Teleported")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/v1/shipments?status=Teleported")).StatusCode);
 
     [Fact]
     public async Task Scans_FutureScanTime_Returns400()
     {
         var tn = await CreateShipmentAsync();
 
-        var response = await _client.PostAsync($"/api/shipments/{tn}/scans", Json(ScanBody(Guid.NewGuid(), "PickedUp", at: DateTimeOffset.UtcNow.AddDays(2))));
+        var response = await _client.PostAsync($"/api/v1/shipments/{tn}/scans", Json(ScanBody(Guid.NewGuid(), "PickedUp", at: DateTimeOffset.UtcNow.AddDays(2))));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("future", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
@@ -187,7 +187,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     {
         var tn = await CreateShipmentAsync();
 
-        var response = await _client.PostAsync($"/api/shipments/{tn}/scans", Json(ScanBody(Guid.NewGuid(), "Delivered")));
+        var response = await _client.PostAsync($"/api/v1/shipments/{tn}/scans", Json(ScanBody(Guid.NewGuid(), "Delivered")));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("signature", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
@@ -198,7 +198,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Get_UnknownTrackingNumber_Returns404ProblemDetails()
     {
-        var response = await _client.GetAsync("/api/shipments/APX-99999999");
+        var response = await _client.GetAsync("/api/v1/shipments/APX-99999999");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(ProblemJson, response.Content.Headers.ContentType?.MediaType);
@@ -209,12 +209,12 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
 
     [Fact]
     public async Task Get_MalformedTrackingNumber_DoesNotMatchTheRoute() =>
-        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/shipments/not-a-number")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/v1/shipments/not-a-number")).StatusCode);
 
     [Fact]
     public async Task EveryEndpointWithATrackingNumber_Returns404WhenUnknown()
     {
-        const string unknown = "/api/shipments/APX-99999998";
+        const string unknown = "/api/v1/shipments/APX-99999998";
 
         Assert.Equal(HttpStatusCode.NotFound, (await _client.PutAsync(unknown, Json(UpdateBody()))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.PatchAsync($"{unknown}/status", Json("""{"status":"PickedUp"}"""))).StatusCode);
@@ -230,7 +230,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     {
         var tn = await CreateShipmentAsync();
 
-        var response = await _client.PostAsync("/api/shipments", Json(CreateBody(tn)));
+        var response = await _client.PostAsync("/api/v1/shipments", Json(CreateBody(tn)));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(ProblemJson, response.Content.Headers.ContentType?.MediaType);
@@ -256,7 +256,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         var tn = await CreateShipmentAsync();
         await PatchStatusAsync(tn, "PickedUp");
 
-        var response = await _client.PutAsync($"/api/shipments/{tn}", Json(UpdateBody()));
+        var response = await _client.PutAsync($"/api/v1/shipments/{tn}", Json(UpdateBody()));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
@@ -268,8 +268,8 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     {
         var tn = await CreateShipmentAsync();
 
-        var deleted = await _client.DeleteAsync($"/api/shipments/{tn}");
-        var after = await _client.GetAsync($"/api/shipments/{tn}");
+        var deleted = await _client.DeleteAsync($"/api/v1/shipments/{tn}");
+        var after = await _client.GetAsync($"/api/v1/shipments/{tn}");
 
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, after.StatusCode);
@@ -281,19 +281,19 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         var tn = await CreateShipmentAsync();
         await PatchStatusAsync(tn, "PickedUp");
 
-        var response = await _client.DeleteAsync($"/api/shipments/{tn}");
+        var response = await _client.DeleteAsync($"/api/v1/shipments/{tn}");
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync($"/api/shipments/{tn}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync($"/api/v1/shipments/{tn}")).StatusCode);
     }
 
     // ---- 415 ----
 
     [Theory]
-    [InlineData("POST", "/api/shipments")]
-    [InlineData("PUT", "/api/shipments/APX-99999997")]
-    [InlineData("PATCH", "/api/shipments/APX-99999997/status")]
-    [InlineData("POST", "/api/shipments/APX-99999997/scans")]
+    [InlineData("POST", "/api/v1/shipments")]
+    [InlineData("PUT", "/api/v1/shipments/APX-99999997")]
+    [InlineData("PATCH", "/api/v1/shipments/APX-99999997/status")]
+    [InlineData("POST", "/api/v1/shipments/APX-99999997/scans")]
     public async Task WriteEndpoints_RejectANonJsonBodyWith415(string method, string url)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), url)
@@ -315,8 +315,8 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         var scanId = Guid.NewGuid();
         var body = ScanBody(scanId, "PickedUp");
 
-        var first = await _client.PostAsync($"/api/shipments/{tn}/scans", Json(body));
-        var second = await _client.PostAsync($"/api/shipments/{tn}/scans", Json(body));
+        var first = await _client.PostAsync($"/api/v1/shipments/{tn}/scans", Json(body));
+        var second = await _client.PostAsync($"/api/v1/shipments/{tn}/scans", Json(body));
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
@@ -328,11 +328,11 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         Assert.Equal(1, secondBody.RootElement.GetProperty("duplicatesSkipped").GetInt32());
         Assert.Equal(0, secondBody.RootElement.GetProperty("rejected").GetArrayLength());
 
-        using var history = await ReadJsonAsync(await _client.GetAsync($"/api/shipments/{tn}/scans"));
+        using var history = await ReadJsonAsync(await _client.GetAsync($"/api/v1/shipments/{tn}/scans"));
         Assert.Equal(1, history.RootElement.GetArrayLength());
         Assert.Equal(scanId, history.RootElement[0].GetProperty("scanId").GetGuid());
-        using var shipment = await ReadJsonAsync(await _client.GetAsync($"/api/shipments/{tn}"));
-        Assert.Equal("PickedUp", shipment.RootElement.GetProperty("status").GetString());
+        using var shipment = await ReadJsonAsync(await _client.GetAsync($"/api/v1/shipments/{tn}"));
+        Assert.Equal(1, shipment.RootElement.GetProperty("status").GetInt32());
     }
 
     [Fact]
@@ -341,9 +341,9 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         var first = await CreateShipmentAsync();
         var second = await CreateShipmentAsync();
         var scanId = Guid.NewGuid();
-        await _client.PostAsync($"/api/shipments/{first}/scans", Json(ScanBody(scanId, "PickedUp")));
+        await _client.PostAsync($"/api/v1/shipments/{first}/scans", Json(ScanBody(scanId, "PickedUp")));
 
-        var response = await _client.PostAsync($"/api/shipments/{second}/scans", Json(ScanBody(scanId, "PickedUp")));
+        var response = await _client.PostAsync($"/api/v1/shipments/{second}/scans", Json(ScanBody(scanId, "PickedUp")));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = await ReadJsonAsync(response);
@@ -366,7 +366,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
         }));
         using var client = failing.CreateClient();
 
-        var response = await client.GetAsync("/api/shipments/APX-10000001");
+        var response = await client.GetAsync("/api/v1/shipments/APX-10000001");
         var text = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);

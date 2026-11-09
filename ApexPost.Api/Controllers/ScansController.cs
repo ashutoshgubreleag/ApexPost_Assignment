@@ -1,13 +1,16 @@
 using ApexPost.Api.Contracts;
 using ApexPost.Services.Abstractions;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ApexPost.Api.Controllers;
 
-/// <summary>Scan history and the idempotent bulk upload used by the courier app. Thin: all rules are in <see cref="IShipmentTrackingService"/>.</summary>
+/// <summary>Scan history and the idempotent bulk upload used by the courier app. The scan contract is identical in v1 and v2, so one controller serves both versions. Thin: all rules are in <see cref="IShipmentTrackingService"/>.</summary>
 [ApiController]
-[Route("api/shipments/{trackingNumber:regex(^APX-\\d{{8}}$)}/scans")]
+[ApiVersion("1.0", Deprecated = true)]
+[ApiVersion("2.0")]
+[Route("api/v{version:apiVersion}/shipments/{trackingNumber:regex(^APX-\\d{{8}}$)}/scans")]
 [Tags("Scans")]
 public sealed class ScansController(IShipmentTrackingService shipments) : ControllerBase
 {

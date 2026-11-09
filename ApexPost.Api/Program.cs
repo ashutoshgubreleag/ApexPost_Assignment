@@ -1,4 +1,5 @@
 using ApexPost.Api.Infrastructure;
+using ApexPost.Api.OpenApi;
 using ApexPost.Repositories;
 using ApexPost.Services;
 using ApexPost.Utilities.Middleware;
@@ -31,7 +32,12 @@ builder.Services.AddApexPostPersistence(sp =>
 
 builder.Services.AddControllers()
     // Enums travel as names ("InTransit"), not numbers; numbers are still accepted on input.
+    // (v1 shipments are the exception: their response DTO declares status as an int, see VERSIONING.md.)
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+// The OpenAPI generator reads the HTTP JSON options, so give it the same enum rule: schemas show string enums.
+builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddApexPostVersioning();
+builder.Services.AddApexPostOpenApi();
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = ProblemDetailsCustomizer.Apply);
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 
@@ -41,6 +47,20 @@ app.UseMiddleware<CorrelationIdMiddleware>();   // correlation id on every respo
 app.UseExceptionHandler();                      // unhandled exceptions -> ApiExceptionHandler -> 500 ProblemDetails
 app.UseStatusCodePages();                       // bodiless 404/405/415 -> ProblemDetails
 app.UseHttpsRedirection();
+
+if (app.Environment.IsDevelopment())
+{
+    // Contract documents and the viewer are Development-only: nothing about the API surface is published by accident.
+    app.MapOpenApi();   // /openapi/v1.json and /openapi/v2.json
+    app.UseSwaggerUI(options =>
+    {
+        options.RoutePrefix = "swagger";
+        options.DocumentTitle = "ApexPost Logistics API";
+        options.SwaggerEndpoint("/openapi/v2.json", "v2");
+        options.SwaggerEndpoint("/openapi/v1.json", "v1 (deprecated)");
+    });
+}
+
 app.MapControllers();
 
 await app.RunAsync();

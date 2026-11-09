@@ -1,4 +1,4 @@
-# ApexPost.Api requests (Part B, unversioned /api/shipments).
+# ApexPost.Api requests (Part B, unversioned /api/v2/shipments).
 # Works in Visual Studio 2022 (Endpoints Explorer), VS Code (REST Client) and Rider.
 # Run the API first:  dotnet run --project .\ApexPost.Api --launch-profile https
 # Requests run top to bottom. Each request has one success case and one failure case.
@@ -9,7 +9,7 @@
 @scanB = 8c1d0f55-2b7e-4a39-b1c6-0e5a9d3f7a22
 
 ### 1. Create a shipment -> 201 Created + Location header
-POST {{host}}/api/shipments
+POST {{host}}/api/v2/shipments
 Content-Type: application/json
 
 {
@@ -22,7 +22,7 @@ Content-Type: application/json
 }
 
 ### 1b. Create, FAILURE -> 400 ValidationProblemDetails (bad tracking number, weight out of range, missing fields)
-POST {{host}}/api/shipments
+POST {{host}}/api/v2/shipments
 Content-Type: application/json
 
 {
@@ -32,7 +32,7 @@ Content-Type: application/json
 }
 
 ### 1c. Create, FAILURE -> 409 Conflict (run request 1 twice)
-POST {{host}}/api/shipments
+POST {{host}}/api/v2/shipments
 Content-Type: application/json
 
 {
@@ -45,25 +45,25 @@ Content-Type: application/json
 }
 
 ### 1d. Create, FAILURE -> 415 Unsupported Media Type
-POST {{host}}/api/shipments
+POST {{host}}/api/v2/shipments
 Content-Type: text/plain
 
 trackingNumber=APX-10000009
 
 ### 2. List shipments (paged, filtered) -> 200
-GET {{host}}/api/shipments?page=1&pageSize=20&status=Created&city=Melbourne
+GET {{host}}/api/v2/shipments?page=1&pageSize=20&status=Created&city=Melbourne
 
 ### 2b. List, FAILURE -> 400 (unknown status)
-GET {{host}}/api/shipments?status=Teleported
+GET {{host}}/api/v2/shipments?status=Teleported
 
 ### 3. Get one shipment -> 200
-GET {{host}}/api/shipments/{{tn}}
+GET {{host}}/api/v2/shipments/{{tn}}
 
 ### 3b. Get, FAILURE -> 404 (unknown tracking number)
-GET {{host}}/api/shipments/APX-99999999
+GET {{host}}/api/v2/shipments/APX-99999999
 
 ### 4. Replace editable details -> 200 (only while status is Created)
-PUT {{host}}/api/shipments/{{tn}}
+PUT {{host}}/api/v2/shipments/{{tn}}
 Content-Type: application/json
 
 {
@@ -75,7 +75,7 @@ Content-Type: application/json
 }
 
 ### 4b. Replace, FAILURE -> 400 (weight out of range)
-PUT {{host}}/api/shipments/{{tn}}
+PUT {{host}}/api/v2/shipments/{{tn}}
 Content-Type: application/json
 
 {
@@ -87,19 +87,19 @@ Content-Type: application/json
 }
 
 ### 5. Change status (next step only) -> 200
-PATCH {{host}}/api/shipments/{{tn}}/status
+PATCH {{host}}/api/v2/shipments/{{tn}}/status
 Content-Type: application/json
 
 { "status": "PickedUp" }
 
 ### 5b. Change status, FAILURE -> 409 (skips InTransit and OutForDelivery)
-PATCH {{host}}/api/shipments/{{tn}}/status
+PATCH {{host}}/api/v2/shipments/{{tn}}/status
 Content-Type: application/json
 
 { "status": "Delivered" }
 
 ### 6. Upload scans (idempotent: send it twice, the second response says duplicatesSkipped) -> 200
-POST {{host}}/api/shipments/{{tn}}/scans
+POST {{host}}/api/v2/shipments/{{tn}}/scans
 Content-Type: application/json
 
 {
@@ -110,7 +110,7 @@ Content-Type: application/json
 }
 
 ### 6b. Upload scans, FAILURE -> 400 (Delivered scan without a signature name, and a scan in the future)
-POST {{host}}/api/shipments/{{tn}}/scans
+POST {{host}}/api/v2/shipments/{{tn}}/scans
 Content-Type: application/json
 
 {
@@ -121,13 +121,13 @@ Content-Type: application/json
 }
 
 ### 7. Scan history -> 200
-GET {{host}}/api/shipments/{{tn}}/scans
+GET {{host}}/api/v2/shipments/{{tn}}/scans
 
 ### 7b. Scan history, FAILURE -> 404
-GET {{host}}/api/shipments/APX-99999999/scans
+GET {{host}}/api/v2/shipments/APX-99999999/scans
 
 ### 8. Delete (only while status is Created). Create APX-10000002 first, then delete it -> 204
-POST {{host}}/api/shipments
+POST {{host}}/api/v2/shipments
 Content-Type: application/json
 
 {
@@ -140,7 +140,56 @@ Content-Type: application/json
 }
 
 ###
-DELETE {{host}}/api/shipments/APX-10000002
+DELETE {{host}}/api/v2/shipments/APX-10000002
 
 ### 8b. Delete, FAILURE -> 409 (the shipment was picked up in request 5)
-DELETE {{host}}/api/shipments/{{tn}}
+DELETE {{host}}/api/v2/shipments/{{tn}}
+
+
+# ---------------------------------------------------------------------------------------------
+# Part C: versions, headers and contracts
+# ---------------------------------------------------------------------------------------------
+
+### 9. v2 shipment: nested "recipient", "latestScan" and "status" as a string -> 200
+# Look at the response headers too: api-supported-versions: 2.0 and api-deprecated-versions: 1.0
+GET {{host}}/api/v2/shipments/{{tn}}
+
+### 10. v1 (DEPRECATED) shipment: flat recipient fields and a NUMERIC status (0 = Created ... 5 = Failed) -> 200
+GET {{host}}/api/v1/shipments/{{tn}}
+
+### 10b. v1 list -> 200 (same paging rules, flat items)
+GET {{host}}/api/v1/shipments?page=1&pageSize=20
+
+### 10c. v1 create -> 201, Location is /api/v1/shipments/APX-10000003
+POST {{host}}/api/v1/shipments
+Content-Type: application/json
+
+{
+  "trackingNumber": "APX-10000003",
+  "recipientName": "Grace Hopper",
+  "recipientPhone": "0400 000 333",
+  "address": "9 New Lane",
+  "city": "Sydney",
+  "weightKg": 3
+}
+
+### 10d. v1 scan upload: the scan contract is the same in both versions -> 200
+POST {{host}}/api/v1/shipments/APX-10000003/scans
+Content-Type: application/json
+
+{
+  "scans": [
+    { "scanId": "7c2e9ab3-5f66-4d81-a034-b19d8e3f4c55", "scanType": "PickedUp", "location": "Sydney Depot", "scannedAtUtc": "2026-11-08T21:00:00Z" }
+  ]
+}
+
+### 11. FAILURE -> 404: the old unversioned route no longer exists
+GET {{host}}/api/shipments/{{tn}}
+
+### 12. OpenAPI contract of each version (Development only)
+GET {{host}}/openapi/v1.json
+
+###
+GET {{host}}/openapi/v2.json
+
+### 13. Swagger UI (open in a browser, Development only): {{host}}/swagger

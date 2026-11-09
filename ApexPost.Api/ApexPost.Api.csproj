@@ -13,6 +13,8 @@
     <!-- Built-in OpenAPI generator (also reads the XML doc comments of the controllers and DTOs). -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <!-- Pin: transitive 2.0.0 has advisory GHSA-v5pm-xwqc-g5wc (fixed in 2.7.5) -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
     <!-- Swagger UI ONLY: the static viewer. Swashbuckle's document generator is deliberately not used. -->
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="9.0.3" />
   </ItemGroup>

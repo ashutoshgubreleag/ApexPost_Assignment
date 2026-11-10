@@ -5,7 +5,7 @@ Username: DESKTOP-FB55L35\Administrator
 RunAs User: DESKTOP-FB55L35\Administrator
 Configuration Name: 
 Machine: DESKTOP-FB55L35 (Microsoft Windows NT 10.0.22000.0)
-Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\scripts\demo-requests.ps1 -PartnerKey ynwbBZIQ9lYs_H-lgVZZAw9BSNICbiHBDiD8awEiSB0 -Pause
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File .\scripts\demo-requests.ps1 -PartnerKey <REDACTED> -Pause
 Process ID: 6452
 PSVersion: 5.1.22000.2538
 PSEdition: Desktop

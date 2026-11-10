@@ -15,6 +15,13 @@ selling when the network is down and syncs when it comes back.
   SSMS blocking demo, deadlock-avoidance note): **[sql/](sql/README.md)**
 * Demo script: **[docs/DEMO.md](docs/DEMO.md)** · Week 2 design (middleware, filters, auth): [docs/DESIGN-week2.md](docs/DESIGN-week2.md)
 
+**Week 4** adds courier tracking on top of that platform: an offline-first courier library on Couchbase Lite,
+a versioned and secured REST API, a generated client SDK and a .NET MAUI courier app.
+
+* Part A, offline courier library: [OFFLINE-DESIGN.md](OFFLINE-DESIGN.md) · Part B and C, API endpoints and status codes: [API-NOTES.md](API-NOTES.md), versions: [VERSIONING.md](VERSIONING.md)
+* Part D, security: [SECURITY.md](SECURITY.md) · resilience of the courier app: [RESILIENCE.md](RESILIENCE.md) · demo video script: [docs/DEMO-VIDEO-SCRIPT.md](docs/DEMO-VIDEO-SCRIPT.md)
+* Screenshots of every request and screen: `docs/screenshots/week4/`
+
 ![Branch dashboard](docs/screenshots/dashboard.png)
 
 ## Solution structure
@@ -33,6 +40,14 @@ selling when the network is down and syncs when it comes back.
 | `ApexPost.CounterTerminal` | Offline counter terminal (Couchbase Lite) |
 | `ApexPost.Tests` | Unit tests (fakes) and WebApplicationFactory tests |
 | `ApexPost.CounterTerminal.Tests` | Terminal tests on a real Couchbase Lite database |
+| `ApexPost.Courier.Offline` | **Week 4 Part A**: offline courier library (scan outbox on Couchbase Lite, change listener, SQL++ queries) |
+| `ApexPost.Courier.Offline.Harness` | Part A console harness: add scans, query, sync with a fake uploader |
+| `ApexPost.Courier.Offline.Tests` | Part A tests on a real Couchbase Lite database |
+| `ApexPost.Api` | **Week 4 Parts B to D**: courier tracking REST API (versioned, OpenAPI, JWT roles, partner API key) |
+| `ApexPost.Api.Tests` | API tests over `WebApplicationFactory` (in-memory store) |
+| `ApexPost.Client` / `ApexPost.Client.Consumer` | NSwag client SDK generated from `contracts/v2.json`, and a console app that uses it |
+| `ApexPost.Courier.Core` / `.Core.Tests` | Courier app logic: API client, Polly resilience, sync coordinator, JSON handling |
+| `ApexPost.Courier` | .NET MAUI courier app (Windows and Android). Not in `ApexPost.slnx`: it needs `dotnet workload install maui` |
 | `ApexPost.IntegrationTests` | SQL Server tests on disposable, migrated databases |
 | `database/` | `schema.sql` (idempotent migration script), `perf/` (volume generator, workloads, results), `querystring/` (`ToQueryString` output of three queries) |
 | `sql/` | Standalone T-SQL run in SSMS: reports, the sale transaction, blocking demo, `DEADLOCKS.md` |
@@ -157,6 +172,46 @@ Across the app, business-rule and validation failures are **400** (with a rule c
 `STOCK_INSUFFICIENT`), and conflicting changes are **409**: a `rowversion` conflict, or a
 unique-key violation such as the same staff e-mail saved twice at once. See DESIGN.md §5.1.
 
+## Offline courier library (Week 4 Part A)
+
+`ApexPost.Courier.Offline` keeps courier scans in a Couchbase Lite database when there is no network, and uploads them
+through an outbox when there is. Design, document model, indexes and the sync decision are in **[OFFLINE-DESIGN.md](OFFLINE-DESIGN.md)**.
+
+```powershell
+dotnet run --project .\ApexPost.Courier.Offline.Harness     # menu: add a scan, list pending, query by tracking number, sync, counts, query plans
+dotnet test .\ApexPost.Courier.Offline.Tests                # 31 tests on a real Couchbase Lite database
+```
+
+## Courier tracking REST API (Week 4 Part B)
+
+`ApexPost.Api` stores shipments and scans in new tables that sit beside the Week 3 tables (migration `AddCourierTracking`).
+Controllers are thin; the rules (status transitions, idempotent scan upload, delete only while Created) live in the service layer.
+
+```powershell
+$env:APEXPOST_DESIGN_CONNECTION = "Server=.;Database=ApexPostDb;Trusted_Connection=True;TrustServerCertificate=True"
+dotnet ef database update --project .\ApexPost.Database
+dotnet user-secrets set "ConnectionStrings:ApexPostDb" "Server=.;Database=ApexPostDb;Trusted_Connection=True;TrustServerCertificate=True" --project .\ApexPost.Api
+dotnet run --project .\ApexPost.Api --launch-profile https       # https://localhost:7153/swagger
+```
+
+Endpoints, status codes and error shapes: **[API-NOTES.md](API-NOTES.md)**. Ready-made requests: `ApexPost.Api\ApexPost.Api.http`,
+or run them all with `powershell -ExecutionPolicy Bypass -File .\scripts\demo-requests.ps1 -PartnerKey "<Partner:ApiKeys:0>" -Pause`.
+
+## Courier app (Week 4 Part D)
+
+A .NET MAUI app (`ApexPost.Courier`) that signs in with a Development token, saves scans to the local Couchbase Lite outbox
+and uploads them in the background through `IHttpClientFactory` with Polly retries and a circuit breaker
+(see **[RESILIENCE.md](RESILIENCE.md)**). Start the API first, then:
+
+```powershell
+dotnet workload install maui                                                  # once
+dotnet run --project .\ApexPost.Courier -f net10.0-windows10.0.19041.0
+```
+
+Sign in as `C-1001`, then add a scan for an existing shipment (the number must look like `APX-12345678`; create one with
+`dotnet run --project .\ApexPost.Client.Consumer`). Stop the API, save another scan, and the Sync Status page reports the
+server as unavailable while the scan stays pending; start the API and it uploads without a duplicate.
+
 ## Courier API security: JWT, roles, partner API key (Week 4 Part D)
 
 Design, OAuth2 background and the production checklist are in **[SECURITY.md](SECURITY.md)**. To run it locally:
@@ -205,6 +260,9 @@ Versions (`/api/v1` deprecated, `/api/v2` current), the breaking changes and the
 dotnet build .\ApexPost.slnx                    # zero warnings (TreatWarningsAsErrors)
 dotnet test  .\ApexPost.Tests                   # 143 unit, web, over-posting and terminal-to-server tests, no database needed
 dotnet test  .\ApexPost.CounterTerminal.Tests   # 31 tests on a real Couchbase Lite database
+dotnet test  .\ApexPost.Courier.Offline.Tests   # 31 Week 4 Part A tests on a real Couchbase Lite database
+dotnet test  .\ApexPost.Api.Tests              # 157 Week 4 API tests: rules, versioning, 401/403, partner key
+dotnet test  .\ApexPost.Courier.Core.Tests      # 24 Week 4 courier app tests: retries, circuit breaker, sync, JSON
 $env:APEXPOST_TEST_SQL = "Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True"
 dotnet test  .\ApexPost.IntegrationTests        # 46 SQL Server tests (creates and drops ApexPostTest_* databases), incl. the sql/ scripts
 ```

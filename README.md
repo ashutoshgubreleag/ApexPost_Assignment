@@ -21,6 +21,7 @@ a versioned and secured REST API, a generated client SDK and a .NET MAUI courier
 * Part A, offline courier library: [OFFLINE-DESIGN.md](OFFLINE-DESIGN.md) · Part B and C, API endpoints and status codes: [API-NOTES.md](API-NOTES.md), versions: [VERSIONING.md](VERSIONING.md)
 * Part D, security: [SECURITY.md](SECURITY.md) · resilience of the courier app: [RESILIENCE.md](RESILIENCE.md) · demo video script: [docs/DEMO-VIDEO-SCRIPT.md](docs/DEMO-VIDEO-SCRIPT.md)
 * Screenshots of every request and screen: `docs/screenshots/week4/`
+* Demo video: https://drive.google.com/file/d/1t-X_ZO2Rt8SdwLtOgEMGsor18Vsai0-W/view?usp=sharing
 
 ![Branch dashboard](docs/screenshots/dashboard.png)
 

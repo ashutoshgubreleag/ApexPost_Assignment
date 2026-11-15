@@ -134,8 +134,11 @@ internal sealed class Host : IDisposable
         TotalTimeout = TimeSpan.FromSeconds(20),
     };
 
+    /// <summary>Fixed scan time (no wall clock in tests). The fake server does not validate it, so any past instant works.</summary>
+    public static readonly DateTimeOffset ScanTime = new(2026, 1, 15, 7, 55, 0, TimeSpan.Zero);
+
     public ShipmentScan AddScan(ScanType type = ScanType.Pickup, string tracking = "APX-10000001", string? notes = null) =>
-        Repo.Create(ShipmentScan.CreateNew(tracking, type, "courier-1", "Melbourne Depot", DateTimeOffset.UtcNow.AddMinutes(-5), notes));
+        Repo.Create(ShipmentScan.CreateNew(tracking, type, "courier-1", "Melbourne Depot", ScanTime, notes));
 
     public void Dispose() => _provider.Dispose();
 }

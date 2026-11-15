@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using ApexPost.Models.Domain;
 using ApexPost.Services.Abstractions;
 using ApexPost.Models.Exceptions;
@@ -116,14 +115,17 @@ public sealed class ReflectionValidatorTests
 
 public sealed class SpecificationTests
 {
+    // Fixed instant: the specification never looks at the time, but tests must not read the wall clock.
+    private static readonly DateTimeOffset At = new(2026, 1, 15, 8, 0, 0, TimeSpan.Zero);
+
     [Fact]
     public void Composes()
     {
         var paid = Specification<CounterTransaction>.Where(t => t.Status == TransactionStatus.Paid);
         var atBr1 = Specification<CounterTransaction>.Where(t => t.BranchCode == new BranchCode("BR-001"));
-        var tx = CounterTransaction.Open(new BranchCode("BR-002"), 1, 10, DateTimeOffset.UtcNow);
+        var tx = CounterTransaction.Open(new BranchCode("BR-002"), 1, 10, At);
         tx.AddServiceLine(TransactionLineType.IdentityVerification, "IDV-1", "Identity check", new Money(2.50m), TaxCategory.Standard, new Money(0.25m), Money.Zero);
-        tx.Pay(PaymentMethod.Cash, DateTimeOffset.UtcNow);
+        tx.Pay(PaymentMethod.Cash, At.AddMinutes(2));
 
         Assert.False((paid & atBr1).IsSatisfiedBy(tx));
         Assert.True((paid | atBr1).IsSatisfiedBy(tx));
@@ -148,7 +150,7 @@ public sealed class AuditRedactorTests
     public void OrdinaryFields_AreKept() => Assert.Equal("PKG-001", AuditRedactor.Redact("Sku", "PKG-001"));
 }
 
-public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
+public sealed class ConcurrencyAndCachingTests
 {
     [Fact]
     public async Task CourierRateLookups_AreBoundedBySemaphore()
@@ -182,36 +184,27 @@ public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task ReferenceDataCache_HitsCompleteSynchronously_AndAreFaster()
+    // Week 5 review (TESTING-STRATEGY.md §4.5): this test used to also assert "cache is faster than the repository"
+    // by comparing two Stopwatch readings. A timing comparison is non-deterministic (GC pauses or a busy CI agent can
+    // flip it while the code is correct), so it was removed. Performance evidence lives in PERFORMANCE.md. What is kept
+    // is the functional contract the cache exists for: a hit completes synchronously and returns the catalogue data.
+    public async Task ReferenceDataCache_HitsCompleteSynchronously_AndReturnTheCatalogue()
     {
+        // Arrange
         await using var harness = await ServiceHarness.CreateAsync();
         var cache = harness.Get<IReferenceDataCache>();
         var repository = harness.Scoped<ICatalogQueries>();
-
         await cache.GetProductsAsync(CancellationToken.None); // warm
+
+        // Act
         var hit = cache.GetProductsAsync(CancellationToken.None);
+
+        // Assert
         Assert.True(hit.IsCompletedSuccessfully); // no Task allocated, no await needed
-
-        const int iterations = 2000;
-        await repository.ListProductsAsync(CancellationToken.None);
-        var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            var all = await repository.ListProductsAsync(CancellationToken.None);
-            _ = all.First(p => p.Sku == new Sku("OFF-011"));
-        }
-
-        var repositoryMs = sw.Elapsed.TotalMilliseconds;
-        sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            var index = await cache.GetProductsAsync(CancellationToken.None);
-            _ = index[new Sku("OFF-011")];
-        }
-
-        var cacheMs = sw.Elapsed.TotalMilliseconds;
-        output.WriteLine($"{iterations} product lookups: repository copy+scan {repositoryMs:0.0} ms, ValueTask cache {cacheMs:0.0} ms ({repositoryMs / Math.Max(cacheMs, 0.001):0}x)");
-        Assert.True(cacheMs < repositoryMs);
+        var products = await hit; // already completed: returns immediately
+        var expected = await repository.ListProductsAsync(CancellationToken.None);
+        Assert.Equal(expected.Count, products.Count);
+        Assert.Equal(expected.Single(p => p.Sku == new Sku("OFF-011")).Name, products[new Sku("OFF-011")].Name);
     }
 
     [Fact]
@@ -232,7 +225,7 @@ public sealed class ConcurrencyAndCachingTests(ITestOutputHelper output)
     {
         var store = new InMemoryAuditStore();
 
-        await Task.WhenAll(Enumerable.Range(0, 50).Select(i => store.AppendAsync(new AuditEntry { Action = $"Test.{i}", TimestampUtc = DateTimeOffset.UtcNow }, CancellationToken.None)));
+        await Task.WhenAll(Enumerable.Range(0, 50).Select(i => store.AppendAsync(new AuditEntry { Action = $"Test.{i}", TimestampUtc = new DateTimeOffset(2026, 1, 15, 8, 0, 0, TimeSpan.Zero).AddSeconds(i) }, CancellationToken.None)));
 
         Assert.Equal(50, store.Entries.Count);
         Assert.Equal(50, (await store.ReadRecentAsync(100, CancellationToken.None)).Select(e => e.Action).Distinct().Count());

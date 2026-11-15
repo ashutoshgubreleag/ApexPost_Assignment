@@ -253,6 +253,17 @@ is actually written or touched.
 So we mock **our own ports** (`ITrackedShipmentRepository`, etc.), where the contract is ours and small, and
 test the **implementations** of those ports against a real SQL Server.
 
+**Isolation in the SQL Server tests.** Creating and migrating a database takes a few seconds, so each test
+*class* shares one database (`IClassFixture`), and each *test* works only on its own rows: its own tracking
+numbers, and for list queries its own city. *Why this is still isolated:* no test reads or changes another
+test's rows, so the outcome does not depend on execution order. Sharing is limited to one class, and the
+database is dropped when the class finishes.
+
+**Test authentication in the end-to-end test.** `SqlApiFactory` replaces only the authentication scheme, with a
+`TestAuthHandler` that reads the role and courier id from test headers. It emits the same claim types as the JWT
+handler (`role`, `courierId`, `sub`), so `[Authorize(Roles)]` and `ScanOwnershipFilter` run unchanged.
+Repositories, unit of work, EF Core and SQL Server are all real.
+
 ---
 
 ## 6. Test project structure
@@ -395,3 +406,12 @@ the run summary, are in the README "Tests" section.
 
 *To be completed in Task 7 after the full suite has run: passed / failed / skipped summary, optional coverage
 comment, what the strategy caught, what we would change, and which test type gave the most confidence per minute.*
+
+**Findings log (collected while implementing, used in the reflection):**
+
+1. *Step 4, SQL Server integration test:* the first version of the weight check-constraint test passed `70.001`
+   as an untyped decimal parameter. EF Core sends that as `decimal(18,2)`, so SQL Server received `70.00`, a
+   valid weight, and the test would have "passed the boundary" without ever testing it. We only noticed because
+   the test was first run expecting a failure that did not come. Fix: a parameter typed `decimal(9,3)` like the
+   column. Lesson: boundary values must survive every layer they pass through. This is another argument for
+   testing against the real database instead of trusting the mapping.

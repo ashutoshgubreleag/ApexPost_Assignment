@@ -24,6 +24,7 @@
   <Project Path="ApexPost.Repositories/ApexPost.Repositories.csproj" />
   <Project Path="ApexPost.Services/ApexPost.Services.csproj" />
   <Project Path="ApexPost.Contracts/ApexPost.Contracts.csproj" />
+  <Project Path="ApexPost.UnitTests/ApexPost.UnitTests.csproj" />
   <Project Path="ApexPost.Utilities/ApexPost.Utilities.csproj" />
   <Project Path="ApexPost.MVC/ApexPost.MVC.csproj" />
   <Project Path="ApexPost.Api/ApexPost.Api.csproj" />

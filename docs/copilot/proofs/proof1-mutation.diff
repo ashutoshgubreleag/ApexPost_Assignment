@@ -1,0 +1,13 @@
+diff --git a/ApexPost.Courier.Core/Sync/SyncCoordinator.cs b/ApexPost.Courier.Core/Sync/SyncCoordinator.cs
+index a72a4e7..0fa3b2e 100644
+--- a/ApexPost.Courier.Core/Sync/SyncCoordinator.cs
++++ b/ApexPost.Courier.Core/Sync/SyncCoordinator.cs
+@@ -83,7 +83,7 @@ public sealed class SyncCoordinator : IDisposable
+                 IsSyncing = false,
+                 PendingCount = _scans.CountPending(),
+                 LastAttemptUtc = now,
+-                LastSuccessUtc = result.Interrupted ? s.LastSuccessUtc : now,
++                LastSuccessUtc = now, // MUTATION (proof 1): success recorded even when interrupted
+                 LastMessage = message,
+             });
+             return result;

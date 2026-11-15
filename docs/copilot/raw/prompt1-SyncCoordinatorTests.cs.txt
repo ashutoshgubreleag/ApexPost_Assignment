@@ -1,0 +1,243 @@
+using ApexPost.Courier.Core.Resilience;
+using ApexPost.Courier.Core.Sync;
+using ApexPost.Courier.Offline.Application;
+using ApexPost.Courier.Offline.Domain;
+using Moq;
+
+namespace ApexPost.Courier.Core.Tests;
+
+public sealed class SyncCoordinatorTests
+{
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    }
+
+    [Fact]
+    public async Task SyncNowAsync_OfflineScenario_ReturnsNull()
+    {
+        // Arrange
+        var now = new DateTimeOffset(2026, 3, 1, 8, 0, 0, TimeSpan.Zero);
+        var scans = new Mock<IScanRepository>();
+        var pendingCounts = new Queue<int>([2, 2]);
+        scans.Setup(x => x.CountPending()).Returns(() => pendingCounts.Count > 0 ? pendingCounts.Dequeue() : 2);
+
+        var connectivity = new Mock<INetworkStatus>();
+        connectivity.SetupGet(x => x.IsOnline).Returns(false);
+
+        var circuit = new Mock<ICircuitStateMonitor>();
+        circuit.SetupGet(x => x.State).Returns(CircuitStateKind.Closed);
+
+        var uploader = new Mock<IShipmentUploader>();
+        var coordinator = new SyncCoordinator(
+            new OutboxService(scans.Object, uploader.Object),
+            scans.Object,
+            connectivity.Object,
+            circuit.Object,
+            new FixedTimeProvider(now));
+
+        // Act
+        var result = await coordinator.SyncNowAsync();
+
+        // Assert
+        Assert.Null(result);
+        Assert.False(coordinator.Current.IsOnline);
+        Assert.Equal(2, coordinator.Current.PendingCount);
+        Assert.Equal("Offline: scans are saved on this phone.", coordinator.Current.LastMessage);
+        uploader.Verify(x => x.UploadAsync(It.IsAny<IReadOnlyList<ShipmentScan>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncNowAsync_SuccessfulSync_UploadsPendingScans()
+    {
+        // Arrange
+        var now = new DateTimeOffset(2026, 3, 2, 9, 15, 0, TimeSpan.Zero);
+        var scan = ShipmentScan.CreateNew("APX-2001", ScanType.Pickup, "courier-9", "Melbourne", now.AddMinutes(-5));
+        var scans = new Mock<IScanRepository>();
+        var pendingCounts = new Queue<int>([1, 0]);
+        scans.Setup(x => x.CountPending()).Returns(() => pendingCounts.Count > 0 ? pendingCounts.Dequeue() : 0);
+        scans.SetupSequence(x => x.GetPending(It.IsAny<int?>()))
+            .Returns(new[] { scan })
+            .Returns(Array.Empty<ShipmentScan>());
+        scans.Setup(x => x.Update(It.IsAny<ShipmentScan>())).Returns(true);
+
+        var connectivity = new Mock<INetworkStatus>();
+        connectivity.SetupGet(x => x.IsOnline).Returns(true);
+
+        var circuit = new Mock<ICircuitStateMonitor>();
+        circuit.SetupGet(x => x.State).Returns(CircuitStateKind.Closed);
+
+        var uploader = new Mock<IShipmentUploader>();
+        uploader.Setup(x => x.UploadAsync(It.IsAny<IReadOnlyList<ShipmentScan>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ScanUploadOutcome(scan.ScanId, true) });
+
+        var coordinator = new SyncCoordinator(
+            new OutboxService(scans.Object, uploader.Object),
+            scans.Object,
+            connectivity.Object,
+            circuit.Object,
+            new FixedTimeProvider(now));
+
+        // Act
+        var result = await coordinator.SyncNowAsync();
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(1, result!.Attempted);
+        Assert.Equal(1, result.Synced);
+        Assert.Equal(0, result.Failed);
+        Assert.False(result.Interrupted);
+
+        Assert.Equal(0, coordinator.Current.PendingCount);
+        Assert.Equal(now, coordinator.Current.LastAttemptUtc);
+        Assert.Equal(now, coordinator.Current.LastSuccessUtc);
+        Assert.Equal("Uploaded 1, rejected 0.", coordinator.Current.LastMessage);
+
+        uploader.Verify(x => x.UploadAsync(
+            It.Is<IReadOnlyList<ShipmentScan>>(batch => batch.Count == 1 && batch[0].ScanId == scan.ScanId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncNowAsync_ServerUnavailableScenario_InterruptsAndKeepsPending()
+    {
+        // Arrange
+        var now = new DateTimeOffset(2026, 3, 3, 10, 30, 0, TimeSpan.Zero);
+        var scan = ShipmentScan.CreateNew("APX-2002", ScanType.Delivered, "courier-7", "Surry Hills", now.AddMinutes(-2));
+        var scans = new Mock<IScanRepository>();
+        scans.Setup(x => x.GetPending(It.IsAny<int?>())).Returns(new[] { scan });
+        scans.Setup(x => x.CountPending()).Returns(1);
+
+        var connectivity = new Mock<INetworkStatus>();
+        connectivity.SetupGet(x => x.IsOnline).Returns(true);
+
+        var circuit = new Mock<ICircuitStateMonitor>();
+        circuit.SetupGet(x => x.State).Returns(CircuitStateKind.Closed);
+
+        var uploader = new Mock<IShipmentUploader>();
+        uploader.Setup(x => x.UploadAsync(It.IsAny<IReadOnlyList<ShipmentScan>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new UploaderUnavailableException("server timeout"));
+
+        var coordinator = new SyncCoordinator(
+            new OutboxService(scans.Object, uploader.Object),
+            scans.Object,
+            connectivity.Object,
+            circuit.Object,
+            new FixedTimeProvider(now));
+
+        // Act
+        var result = await coordinator.SyncNowAsync();
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.True(result!.Interrupted);
+        Assert.Equal("server timeout", result.Error);
+        Assert.Equal(1, coordinator.Current.PendingCount);
+        Assert.Equal(now, coordinator.Current.LastAttemptUtc);
+        Assert.Null(coordinator.Current.LastSuccessUtc);
+        Assert.Equal("Server unavailable: server timeout. Scans stay on this phone.", coordinator.Current.LastMessage);
+    }
+
+    [Fact]
+    public async Task SyncNowAsync_ConcurrentSyncs_OnlyOneRuns()
+    {
+        // Arrange
+        var now = new DateTimeOffset(2026, 3, 4, 12, 0, 0, TimeSpan.Zero);
+        var scan = ShipmentScan.CreateNew("APX-2003", ScanType.Pickup, "courier-4", "Dock 2", now.AddMinutes(-1));
+        var scans = new Mock<IScanRepository>();
+        scans.SetupSequence(x => x.GetPending(It.IsAny<int?>()))
+            .Returns(new[] { scan })
+            .Returns(Array.Empty<ShipmentScan>());
+        scans.Setup(x => x.Update(It.IsAny<ShipmentScan>())).Returns(true);
+        scans.Setup(x => x.CountPending()).Returns(0);
+
+        var connectivity = new Mock<INetworkStatus>();
+        connectivity.SetupGet(x => x.IsOnline).Returns(true);
+
+        var circuit = new Mock<ICircuitStateMonitor>();
+        circuit.SetupGet(x => x.State).Returns(CircuitStateKind.Closed);
+
+        var uploadStarted = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowUploadToFinish = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var uploader = new Mock<IShipmentUploader>();
+        uploader.Setup(x => x.UploadAsync(It.IsAny<IReadOnlyList<ShipmentScan>>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                uploadStarted.SetResult(null);
+                await allowUploadToFinish.Task;
+                return new[] { new ScanUploadOutcome(scan.ScanId, true) };
+            });
+
+        var coordinator = new SyncCoordinator(
+            new OutboxService(scans.Object, uploader.Object),
+            scans.Object,
+            connectivity.Object,
+            circuit.Object,
+            new FixedTimeProvider(now));
+
+        // Act
+        var firstSync = coordinator.SyncNowAsync();
+        await uploadStarted.Task;
+        var secondSync = coordinator.SyncNowAsync();
+        allowUploadToFinish.SetResult(null);
+
+        var results = await Task.WhenAll(firstSync, secondSync);
+
+        // Assert
+        Assert.Equal(2, results.Length);
+        Assert.Contains(results, result => result is { Synced: 1 });
+        Assert.Contains(results, result => result is null);
+        uploader.Verify(x => x.UploadAsync(It.IsAny<IReadOnlyList<ShipmentScan>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncCoordinator_ChangedEvent_UpdatesSnapshotValues()
+    {
+        // Arrange
+        var now = new DateTimeOffset(2026, 3, 5, 13, 45, 0, TimeSpan.Zero);
+        var scan = ShipmentScan.CreateNew("APX-2004", ScanType.Pickup, "courier-11", "Warehouse", now.AddMinutes(-3));
+        var scans = new Mock<IScanRepository>();
+        var pendingCounts = new Queue<int>([1, 0]);
+        scans.Setup(x => x.CountPending()).Returns(() => pendingCounts.Count > 0 ? pendingCounts.Dequeue() : 0);
+        scans.SetupSequence(x => x.GetPending(It.IsAny<int?>()))
+            .Returns(new[] { scan })
+            .Returns(Array.Empty<ShipmentScan>());
+        scans.Setup(x => x.Update(It.IsAny<ShipmentScan>())).Returns(true);
+
+        var connectivity = new Mock<INetworkStatus>();
+        connectivity.SetupGet(x => x.IsOnline).Returns(true);
+
+        var circuit = new Mock<ICircuitStateMonitor>();
+        circuit.SetupGet(x => x.State).Returns(CircuitStateKind.Closed);
+
+        var uploader = new Mock<IShipmentUploader>();
+        uploader.Setup(x => x.UploadAsync(It.IsAny<IReadOnlyList<ShipmentScan>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ScanUploadOutcome(scan.ScanId, true) });
+
+        var coordinator = new SyncCoordinator(
+            new OutboxService(scans.Object, uploader.Object),
+            scans.Object,
+            connectivity.Object,
+            circuit.Object,
+            new FixedTimeProvider(now));
+
+        var snapshots = new List<SyncSnapshot>();
+        coordinator.Changed += (_, snapshot) => snapshots.Add(snapshot);
+
+        // Act
+        await coordinator.SyncNowAsync();
+
+        // Assert
+        Assert.NotEmpty(snapshots);
+        var latest = snapshots[^1];
+        Assert.False(latest.IsSyncing);
+        Assert.Equal(0, latest.PendingCount);
+        Assert.Equal(now, latest.LastAttemptUtc);
+        Assert.Equal(now, latest.LastSuccessUtc);
+        Assert.Equal("Uploaded 1, rejected 0.", latest.LastMessage);
+        Assert.Equal(coordinator.Current, latest);
+    }
+}

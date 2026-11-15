@@ -1,0 +1,6 @@
+[xUnit.net 00:00:00.62]     ApexPost.UnitTests.Sync.SyncCoordinatorTests.SyncNowAsync_ServerUnavailable_InterruptsAndKeepsScansPending [FAIL]
+   Assert.Null() Failure: Value of type 'Nullable<DateTimeOffset>' has a value
+Expected: null
+Actual:   2026-03-02T09:15:00.0000000+00:00
+     at ApexPost.UnitTests.Sync.SyncCoordinatorTests.SyncNowAsync_ServerUnavailable_InterruptsAndKeepsScansPending() in C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.UnitTests\Sync\SyncCoordinatorTests.cs:line 130
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 139 ms - ApexPost.UnitTests.dll (net10.0)

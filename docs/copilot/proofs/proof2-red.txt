@@ -1,0 +1,17 @@
+  ApexPost.Courier.Offline -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Courier.Offline\bin\Debug\net10.0\ApexPost.Courier.Offline.dll
+  ApexPost.Courier.Core -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Courier.Core\bin\Debug\net10.0\ApexPost.Courier.Core.dll
+  ApexPost.Models -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Models\bin\Debug\net10.0\ApexPost.Models.dll
+  ApexPost.Services -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Services\bin\Debug\net10.0\ApexPost.Services.dll
+  ApexPost.Specs -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Specs\bin\Debug\net10.0\ApexPost.Specs.dll
+[xUnit.net 00:00:01.56]     A delivered shipment cannot be moved back to in transit [FAIL]
+   Assert.IsType() Failure: Value is null
+Expected: typeof(ApexPost.Models.Exceptions.ConflictException)
+Actual:   null
+ -> done: ShipmentStatusSteps.GivenAShipmentExists("APX-10000001", "Jane Citizen", "Melbourne") (0.0s)
+ -> done: ShipmentStatusSteps.GivenTheShipmentHasAlreadyReached("delivered") (0.0s)
+ -> done: ShipmentStatusSteps.WhenTheShipmentIsMovedTo("in transit") (0.0s)
+ -> error: Assert.IsType() Failure: Value is null
+ Expected: typeof(ApexPost.Models.Exceptions.ConflictException)
+ Actual:   null (0.0s)
+ -> skipped because of previous errors
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 105 ms - ApexPost.Specs.dll (net10.0)

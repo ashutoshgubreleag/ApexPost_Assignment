@@ -1,0 +1,31 @@
+Feature: Shipment status lifecycle
+  As a dispatch team
+  I want each shipment to move through the delivery lifecycle in a valid order
+  So that customers and couriers see the real progress of every parcel
+
+  Background:
+	Given a shipment "APX-10000001" exists for "Jane Citizen" in "Melbourne"
+
+  Scenario Outline: A shipment advances through the allowed forward path
+	Given the shipment has already been moved to "<fromStatus>"
+	When the shipment is moved to "<nextStatus>"
+	Then the shipment status is "<nextStatus>"
+
+	Examples:
+	  | fromStatus      | nextStatus     |
+	  | Created         | PickedUp       |
+	  | PickedUp       | InTransit      |
+	  | InTransit       | OutForDelivery |
+	  | OutForDelivery  | Delivered      |
+	  | OutForDelivery  | Failed         |
+
+  Scenario: A delivered shipment cannot be moved back to in transit
+	Given the shipment has already been moved to "Delivered"
+	When the shipment is moved to "InTransit"
+	Then the status change is refused because the shipment cannot move backwards
+	And the shipment status is "Delivered"
+
+  Scenario: Skipping a lifecycle step is refused
+	When the shipment is moved to "OutForDelivery"
+	Then the status change is refused because the shipment must progress one step at a time
+	And the shipment status is "Created"

@@ -1,0 +1,13 @@
+diff --git a/ApexPost.Models/Domain/Tracking.cs b/ApexPost.Models/Domain/Tracking.cs
+index 5cbe166..092f41c 100644
+--- a/ApexPost.Models/Domain/Tracking.cs
++++ b/ApexPost.Models/Domain/Tracking.cs
+@@ -38,7 +38,7 @@ public sealed class TrackedShipment : Entity
+         [TrackingStatus.PickedUp] = [TrackingStatus.InTransit],
+         [TrackingStatus.InTransit] = [TrackingStatus.OutForDelivery],
+         [TrackingStatus.OutForDelivery] = [TrackingStatus.Delivered, TrackingStatus.Failed],
+-        [TrackingStatus.Delivered] = [],
++        [TrackingStatus.Delivered] = [TrackingStatus.InTransit], // MUTATION (proof 2): delivered parcels may reopen
+         [TrackingStatus.Failed] = []
+     };
+ 

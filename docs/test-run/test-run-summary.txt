@@ -1,0 +1,20 @@
+ApexPost - full test run (Week 5, branch week5-testing)
+Command : dotnet test ApexPost.slnx
+Date    : 2026-11-15
+SDK     : .NET 10.0.402
+SQL     : (localdb)/MSSQLLocalDB by default (override with the APEXPOST_TEST_SQL environment variable)
+
+Project                            Total  Passed  Failed Skipped
+ApexPost.Api.Tests                   157     157       0       0
+ApexPost.CounterTerminal.Tests        31      31       0       0
+ApexPost.Courier.Core.Tests           24      24       0       0
+ApexPost.Courier.Offline.Tests        31      31       0       0
+ApexPost.IntegrationTests             65      65       0       0
+ApexPost.Specs                        28      28       0       0
+ApexPost.Tests                       143     143       0       0
+ApexPost.UnitTests                   181     181       0       0
+
+TOTAL                                660     660       0       0
+
+Result: every test passed. Wall-clock time including the build: about 1.5 minutes.
+Per-test results (name, outcome, duration): docs/test-run/test-run-detailed.txt

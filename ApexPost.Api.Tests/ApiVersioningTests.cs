@@ -68,7 +68,7 @@ public sealed class ApiVersioningTests : IClassFixture<ApiFactory>
         {
             scans = new[]
             {
-                new { scanId = Guid.NewGuid(), scanType = "PickedUp", location = "Melbourne Depot", scannedAtUtc = DateTimeOffset.UtcNow.AddHours(-1) },
+                new { scanId = Guid.NewGuid(), scanType = "PickedUp", location = "Melbourne Depot", scannedAtUtc = TestTimes.PastReference.AddHours(-1) },
             },
         });
         Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/v2/shipments/{tn}/scans", Json(scan))).StatusCode);
@@ -101,7 +101,7 @@ public sealed class ApiVersioningTests : IClassFixture<ApiFactory>
         var scanId = Guid.NewGuid();
         var body = JsonSerializer.Serialize(new
         {
-            scans = new[] { new { scanId, scanType = "Arrived", location = "Depot", scannedAtUtc = DateTimeOffset.UtcNow.AddHours(-2) } },
+            scans = new[] { new { scanId, scanType = "Arrived", location = "Depot", scannedAtUtc = TestTimes.PastReference.AddHours(-2) } },
         });
 
         var first = await _client.PostAsync($"/api/v1/shipments/{tn}/scans", Json(body));

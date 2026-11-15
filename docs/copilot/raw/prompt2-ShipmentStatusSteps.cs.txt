@@ -1,0 +1,104 @@
+using ApexPost.Models.Domain;
+using ApexPost.Models.Exceptions;
+using ApexPost.Services.Tracking;
+using ApexPost.Specs.Support;
+
+namespace ApexPost.Specs.StepDefinitions;
+
+[Binding]
+public sealed class ShipmentStatusSteps(ShipmentWorld world)
+{
+    private static readonly string[] AllowedStatuses =
+    [
+        nameof(TrackingStatus.Created),
+        nameof(TrackingStatus.PickedUp),
+        nameof(TrackingStatus.InTransit),
+        nameof(TrackingStatus.OutForDelivery),
+        nameof(TrackingStatus.Delivered),
+        nameof(TrackingStatus.Failed)
+    ];
+
+    [Given(@"^a shipment ""(APX-\d+)"" exists for ""(.*)"" in ""(.*)""$")]
+    public async Task GivenAShipmentExists(string trackingNumber, string recipientName, string city)
+    {
+        world.CurrentParcel = trackingNumber;
+        var command = new CreateTrackedShipmentCommand(
+            trackingNumber,
+            new ShipmentDetails(recipientName, "+61 400 000 111", "1 Test Street", city, 2.5m));
+
+        await world.Tracking.CreateAsync(command, CancellationToken.None);
+    }
+
+    [Given(@"^the shipment is currently ""(Created|PickedUp|InTransit|OutForDelivery|Delivered|Failed)""$")]
+    public async Task GivenTheShipmentIsCurrently(string statusText)
+    {
+        var shipment = await world.Tracking.GetAsync(world.CurrentParcel, CancellationToken.None);
+        Assert.Equal(Parse(statusText), shipment.Status);
+    }
+
+    [Given(@"^the shipment has already been moved to ""(Created|PickedUp|InTransit|OutForDelivery|Delivered|Failed)""$")]
+    public Task GivenTheShipmentHasAlreadyBeenMovedTo(string statusText) =>
+        AdvanceToStatusAsync(Parse(statusText));
+
+    [When(@"^the shipment is moved to ""(Created|PickedUp|InTransit|OutForDelivery|Delivered|Failed)""$")]
+    public Task WhenTheShipmentIsMovedTo(string statusText) =>
+        world.TryAsync(() => world.Tracking.ChangeStatusAsync(world.CurrentParcel, Parse(statusText), CancellationToken.None));
+
+    [Then(@"^the shipment status is ""(Created|PickedUp|InTransit|OutForDelivery|Delivered|Failed)""$")]
+    public async Task ThenTheShipmentStatusIs(string statusText)
+    {
+        var shipment = await world.Tracking.GetAsync(world.CurrentParcel, CancellationToken.None);
+        Assert.Equal(Parse(statusText), shipment.Status);
+    }
+
+    [Then("the status change is refused because the shipment cannot move backwards")]
+    public void ThenTheStatusChangeIsRefusedBecauseItCannotMoveBackwards()
+    {
+        var ex = Assert.IsType<ConflictException>(world.LastError);
+        Assert.Equal("INVALID_STATUS_TRANSITION", ex.ErrorCode);
+    }
+
+    [Then("the status change is refused because the shipment must progress one step at a time")]
+    public void ThenTheStatusChangeIsRefusedBecauseItMustProgressOneStepAtATime()
+    {
+        var ex = Assert.IsType<ConflictException>(world.LastError);
+        Assert.Equal("INVALID_STATUS_TRANSITION", ex.ErrorCode);
+    }
+
+    private static TrackingStatus Parse(string statusText) =>
+        Enum.TryParse<TrackingStatus>(statusText, ignoreCase: true, out var status)
+            ? status
+            : throw new InvalidOperationException($"Unknown shipment status '{statusText}'. Valid values: {string.Join(", ", AllowedStatuses)}.");
+
+    private async Task AdvanceToStatusAsync(TrackingStatus target)
+    {
+        if (string.IsNullOrWhiteSpace(world.CurrentParcel))
+        {
+            throw new InvalidOperationException("Current shipment has not been created yet.");
+        }
+
+        var shipment = await world.Tracking.GetAsync(world.CurrentParcel, CancellationToken.None);
+        var order = new[]
+        {
+            TrackingStatus.Created,
+            TrackingStatus.PickedUp,
+            TrackingStatus.InTransit,
+            TrackingStatus.OutForDelivery,
+            TrackingStatus.Delivered,
+            TrackingStatus.Failed
+        };
+
+        var currentIndex = Array.IndexOf(order, shipment.Status);
+        var targetIndex = Array.IndexOf(order, target);
+
+        if (currentIndex < 0 || targetIndex < 0)
+        {
+            throw new InvalidOperationException($"Cannot advance shipment from {shipment.Status} to {target}.");
+        }
+
+        for (var i = currentIndex + 1; i <= targetIndex; i++)
+        {
+            await world.Tracking.ChangeStatusAsync(world.CurrentParcel, order[i], CancellationToken.None);
+        }
+    }
+}

@@ -56,7 +56,7 @@ public sealed class InMemoryTrackingStore
     public void InjectScan(string trackingNumber, Guid scanId, ScanType type = ScanType.PickedUp)
     {
         var shipment = _shipments.Values.Single(s => s.TrackingNumber == trackingNumber);
-        shipment.Scans.Add(new ScanSnapshot(_nextScanId++, scanId, type, "Injected", DateTimeOffset.UtcNow.AddHours(-1), null));
+        shipment.Scans.Add(new ScanSnapshot(_nextScanId++, scanId, type, "Injected", TestTimes.PastReference.AddHours(-1), null));
         _scanOwners[scanId] = shipment.Id;
     }
 

@@ -49,7 +49,9 @@ a versioned and secured REST API, a generated client SDK and a .NET MAUI courier
 | `ApexPost.Client` / `ApexPost.Client.Consumer` | NSwag client SDK generated from `contracts/v2.json`, and a console app that uses it |
 | `ApexPost.Courier.Core` / `.Core.Tests` | Courier app logic: API client, Polly resilience, sync coordinator, JSON handling |
 | `ApexPost.Courier` | .NET MAUI courier app (Windows and Android). Not in `ApexPost.slnx`: it needs `dotnet workload install maui` |
-| `ApexPost.IntegrationTests` | SQL Server tests on disposable, migrated databases |
+| `ApexPost.IntegrationTests` | SQL Server tests on disposable, migrated databases, plus the Week 5 end-to-end API test |
+| `ApexPost.UnitTests` | **Week 5**: isolated unit tests (Moq, fake `HttpMessageHandler`, `FakeTimeProvider`), the TDD rule, Copilot-assisted tests |
+| `ApexPost.Specs` | **Week 5**: BDD acceptance scenarios (Gherkin + Reqnroll) |
 | `database/` | `schema.sql` (idempotent migration script), `perf/` (volume generator, workloads, results), `querystring/` (`ToQueryString` output of three queries) |
 | `sql/` | Standalone T-SQL run in SSMS: reports, the sale transaction, blocking demo, `DEADLOCKS.md` |
 | `scripts/` | `run-perf.ps1` (before/after plans), `verify-week3.ps1` (build + all tests + perf) |
@@ -255,20 +257,81 @@ Versions (`/api/v1` deprecated, `/api/v2` current), the breaking changes and the
   We use only the Swashbuckle.AspNetCore.SwaggerUI package (the viewer); Swashbuckle's generator is not used, because the document comes
   from the built-in generator. Swagger UI is served in Development only.
 
-## Tests
+## Testing (Week 5)
+
+The testing strategy, and the reason behind every decision, is in **[TESTING-STRATEGY.md](TESTING-STRATEGY.md)**.
+The test-first rule is in **[TDD-LOG.md](TDD-LOG.md)**, and the AI-assisted tests and their review are in
+**[COPILOT-LOG.md](COPILOT-LOG.md)**.
+
+### Run every test (no manual setup)
 
 ```powershell
-dotnet build .\ApexPost.slnx                    # zero warnings (TreatWarningsAsErrors)
-dotnet test  .\ApexPost.Tests                   # 143 unit, web, over-posting and terminal-to-server tests, no database needed
-dotnet test  .\ApexPost.CounterTerminal.Tests   # 31 tests on a real Couchbase Lite database
-dotnet test  .\ApexPost.Courier.Offline.Tests   # 31 Week 4 Part A tests on a real Couchbase Lite database
-dotnet test  .\ApexPost.Api.Tests              # 157 Week 4 API tests: rules, versioning, 401/403, partner key
-dotnet test  .\ApexPost.Courier.Core.Tests      # 24 Week 4 courier app tests: retries, circuit breaker, sync, JSON
-$env:APEXPOST_TEST_SQL = "Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True"
-dotnet test  .\ApexPost.IntegrationTests        # 46 SQL Server tests (creates and drops ApexPostTest_* databases), incl. the sql/ scripts
+dotnet test .\ApexPost.slnx
 ```
 
-Or everything, including the performance run, with logs in `artifacts\verify`:
+That is all. The same tests appear in **Visual Studio Test Explorer** (Test ▸ Run All Tests); nothing extra needs
+installing or configuring:
+
+* **SQL Server tests** use `(localdb)\MSSQLLocalDB`, which is installed with Visual Studio. Each test class creates a
+  throw-away `ApexPostTest_<id>` database from the real migrations and drops it afterwards. To use another server,
+  set `APEXPOST_TEST_SQL` (optional):
+  `$env:APEXPOST_TEST_SQL = "Server=.;Integrated Security=True;TrustServerCertificate=True"`
+* **Couchbase Lite tests** use temporary folders.
+* **No secrets and no real network**: test settings are in-memory, fictional and clearly marked test-only; HTTP calls
+  go to fake handlers or to an in-process `TestServer`.
+
+### Run by level
+
+```powershell
+dotnet test .\ApexPost.UnitTests              # unit: Moq, fake HttpMessageHandler, TDD rule, Copilot-assisted (about 2 s)
+dotnet test .\ApexPost.Specs                  # BDD: Gherkin scenarios run by Reqnroll (about 3 s)
+dotnet test .\ApexPost.IntegrationTests       # SQL Server repositories + end-to-end API test (about 50 s)
+dotnet test .\ApexPost.Api.Tests              # API pipeline (WebApplicationFactory, in-memory store), JWT security
+dotnet test .\ApexPost.Courier.Core.Tests     # API client + real Polly retry / circuit-breaker pipeline
+dotnet test .\ApexPost.Courier.Offline.Tests  # offline outbox and repository on a real Couchbase Lite database
+dotnet test .\ApexPost.UnitTests --filter "FullyQualifiedName~Tdd"   # only the TDD rule
+```
+
+### Test projects
+
+| Project | Level | Tests | What it proves |
+|---|---|---:|---|
+| `ApexPost.UnitTests` | Unit | 181 | Status matrix, validation boundaries, service and outbox interactions (Moq), API client response mapping (fake handler), sync coordinator, heavy-parcel surcharge (TDD) |
+| `ApexPost.Specs` | BDD | 28 | Shipment creation, status lifecycle and offline scan sync, in business language |
+| `ApexPost.Api.Tests` | Unit + API pipeline | 157 | Service rules over a stateful fake; HTTP contract, versioning, JWT 401/403, partner key |
+| `ApexPost.IntegrationTests` | Integration (SQL Server) | 65 | Unique indexes, races, cascades, check constraints, query translation; end-to-end API over a real database with test authentication |
+| `ApexPost.Courier.Core.Tests` | Integration (HTTP pipeline) | 24 | Retries, circuit breaker, 401 handling, token store |
+| `ApexPost.Courier.Offline.Tests` | Integration (Couchbase Lite) | 31 | Outbox persistence, SQL++ queries, change listener |
+| `ApexPost.CounterTerminal.Tests` | Integration (Couchbase Lite) | 31 | Week 2–3 counter terminal (regression) |
+| `ApexPost.Tests` | Unit + MVC pipeline | 143 | Week 2–3 counter-sale rules and web app (regression) |
+
+### Latest full run
+
+`dotnet test .\ApexPost.slnx` on .NET 10.0.402 with LocalDB, branch `week5-testing`:
+
+```text
+Project                            Total  Passed  Failed Skipped
+ApexPost.Api.Tests                   157     157       0       0
+ApexPost.CounterTerminal.Tests        31      31       0       0
+ApexPost.Courier.Core.Tests           24      24       0       0
+ApexPost.Courier.Offline.Tests        31      31       0       0
+ApexPost.IntegrationTests             65      65       0       0
+ApexPost.Specs                        28      28       0       0
+ApexPost.Tests                       143     143       0       0
+ApexPost.UnitTests                   181     181       0       0
+
+TOTAL                                660     660       0       0
+```
+
+**660 passed, 0 failed, 0 skipped** in about 1.5 minutes including the build. The saved run log is in
+[docs/test-run/test-run-summary.txt](docs/test-run/test-run-summary.txt), and every test with its result and duration is in
+[docs/test-run/test-run-detailed.txt](docs/test-run/test-run-detailed.txt).
+
+Code coverage was optional for Week 5 and was deliberately not added; the reasons are in TESTING-STRATEGY.md §14.
+
+### Week 3 verification script
+
+Everything, including the performance run, with logs in `artifacts\verify`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-week3.ps1

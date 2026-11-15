@@ -52,7 +52,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
                     scanId,
                     scanType,
                     location = "Melbourne Depot",
-                    scannedAtUtc = at ?? DateTimeOffset.UtcNow.AddHours(-1),
+                    scannedAtUtc = at ?? TestTimes.PastReference.AddHours(-1),
                     recipientSignatureName = signature,
                 },
             },
@@ -179,7 +179,7 @@ public sealed class ApiEndpointTests : IClassFixture<ApiFactory>
     {
         var tn = await CreateShipmentAsync();
 
-        var response = await _client.PostAsync($"/api/v1/shipments/{tn}/scans", Json(ScanBody(Guid.NewGuid(), "PickedUp", at: DateTimeOffset.UtcNow.AddDays(2))));
+        var response = await _client.PostAsync($"/api/v1/shipments/{tn}/scans", Json(ScanBody(Guid.NewGuid(), "PickedUp", at: TestTimes.FarFuture)));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("future", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);

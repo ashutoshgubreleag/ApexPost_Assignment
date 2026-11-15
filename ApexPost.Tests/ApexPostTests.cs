@@ -53,13 +53,15 @@ public sealed class StockRuleTests
     [Fact]
     public void StockEntity_RefusesNegativeQuantity()
     {
-        var row = BranchStock.Create(new BranchCode("BR-001"), new Sku("PKG-001"), 1, 5, DateTimeOffset.UtcNow);
+        // Fixed instant: the rule never depends on the time, but tests must not read the wall clock.
+        var at = new DateTimeOffset(2026, 1, 15, 8, 0, 0, TimeSpan.Zero);
+        var row = BranchStock.Create(new BranchCode("BR-001"), new Sku("PKG-001"), 1, 5, at);
 
-        var ex = Assert.Throws<BusinessRuleViolationException>(() => row.Remove(2, DateTimeOffset.UtcNow));
+        var ex = Assert.Throws<BusinessRuleViolationException>(() => row.Remove(2, at.AddMinutes(1)));
 
         Assert.Equal("STOCK_INSUFFICIENT", ex.RuleCode);
         Assert.Equal(1, row.QuantityOnHand);
-        Assert.Equal("STOCK_NEGATIVE", Assert.Throws<BusinessRuleViolationException>(() => BranchStock.Create(new BranchCode("BR-001"), new Sku("PKG-001"), -1, 5, DateTimeOffset.UtcNow)).RuleCode);
+        Assert.Equal("STOCK_NEGATIVE", Assert.Throws<BusinessRuleViolationException>(() => BranchStock.Create(new BranchCode("BR-001"), new Sku("PKG-001"), -1, 5, at)).RuleCode);
     }
 
     [Fact]

@@ -15,8 +15,11 @@ public sealed class ShipmentTrackingServiceTests
     private readonly TestClock _clock = new(new DateTimeOffset(2026, 11, 9, 8, 0, 0, TimeSpan.Zero));
     private readonly ShipmentTrackingService _service;
 
+    // Week 5: the service now takes a surcharge policy. These tests do not exercise it; the real policy with default options is fine.
+    private IShipmentSurchargePolicy Surcharges => new HeavyParcelSurchargePolicy(Microsoft.Extensions.Options.Options.Create(new HeavyParcelSurchargeOptions()), _clock);
+
     public ShipmentTrackingServiceTests() =>
-        _service = new ShipmentTrackingService(_store.Repository, _store.Queries, _store.UnitOfWork, _clock);
+        _service = new ShipmentTrackingService(_store.Repository, _store.Queries, _store.UnitOfWork, _clock, Surcharges);
 
     private static ShipmentDetails Details(string city = "Melbourne") =>
         new("Ada Lovelace", "+61 400 000 111", "12 Example Street", city, 2.5m);
@@ -64,7 +67,7 @@ public sealed class ShipmentTrackingServiceTests
     {
         // Another request commits the same tracking number after our ExistsAsync check but before our insert.
         var competing = new InMemoryTrackingStore();
-        var service = new ShipmentTrackingService(competing.Repository, competing.Queries, competing.UnitOfWork, _clock);
+        var service = new ShipmentTrackingService(competing.Repository, competing.Queries, competing.UnitOfWork, _clock, Surcharges);
         competing.BeforeNextCommit = () =>
         {
             var rival = TrackedShipment.Create(Tn, "Rival", "+61 400 000 222", "1 Other Road", "Sydney", 1m, _clock.GetUtcNow());

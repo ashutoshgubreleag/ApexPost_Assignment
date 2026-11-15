@@ -35,9 +35,10 @@ public sealed class ChangeMonitorTests : IDisposable
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var ids = await monitor.WaitForChangesAsync(timeout.Token);
 
-        // Give a second (duplicate) listener time to fire, then make sure nothing else arrived.
-        await Task.Delay(300);
-        using var none = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        // Proving that a duplicate listener did NOT fire needs a time bound: absence cannot be observed directly.
+        // One explicit bounded wait replaces the former Task.Delay(300) + 200 ms pair. If a second listener existed it
+        // would deliver the same change within milliseconds of the first, well inside this window.
+        using var none = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await monitor.WaitForChangesAsync(none.Token));
 
         Assert.Equal(1, monitor.Registrations);

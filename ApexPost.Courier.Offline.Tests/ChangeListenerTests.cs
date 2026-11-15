@@ -62,16 +62,27 @@ public sealed class ChangeListenerTests : IDisposable
     [Fact]
     public async Task Disposing_the_monitor_removes_the_listener_token_so_no_more_events_arrive()
     {
+        // Arrange
         var monitor = new PendingScanMonitor(_h.Database, _h.Scans);
         var events = 0;
         monitor.Changed += (_, _) => Interlocked.Increment(ref events);
         monitor.Start();
 
+        // A second, live monitor is the positive control: once IT has seen the change, the database has delivered the
+        // notification, so a listener that was still registered would have fired too. This replaces a fixed
+        // Task.Delay(500) ("wait and hope") with waiting for a condition that is known to happen.
+        using var control = new PendingScanMonitor(_h.Database, _h.Scans);
+        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        control.Changed += (_, _) => delivered.TrySetResult();
+        control.Start();
+
+        // Act
         monitor.Dispose();
         monitor.Dispose();
         _h.Scans.Create(CourierTestHarness.NewScan());
-        await Task.Delay(500);
+        await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
+        // Assert
         Assert.False(monitor.IsListening);
         Assert.Equal(0, Volatile.Read(ref events));
     }

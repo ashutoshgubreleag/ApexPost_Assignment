@@ -1,0 +1,11 @@
+  ApexPost.Models -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Models\bin\Debug\net10.0\ApexPost.Models.dll
+  ApexPost.Courier.Offline -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Courier.Offline\bin\Debug\net10.0\ApexPost.Courier.Offline.dll
+  ApexPost.Courier.Core -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Courier.Core\bin\Debug\net10.0\ApexPost.Courier.Core.dll
+  ApexPost.Services -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Services\bin\Debug\net10.0\ApexPost.Services.dll
+  ApexPost.Specs -> C:\DotNetTraining\Day01\ApexPost\ApexPost_Assignment\ApexPost.Specs\bin\Debug\net10.0\ApexPost.Specs.dll
+[xUnit.net 00:00:01.63]     Probe - a failed shipment stays failed [FAIL]
+   ApexPost.Models.Exceptions.ConflictException : Cannot move shipment APX-10000001 from Delivered to Failed.
+ -> done: ShipmentStatusSteps.GivenAShipmentExists("APX-10000001", "Jane Citizen", "Melbourne") (0.0s)
+ -> error: Cannot move shipment APX-10000001 from Delivered to Failed. (0.0s)
+ -> skipped because of previous errors
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 109 ms - ApexPost.Specs.dll (net10.0)

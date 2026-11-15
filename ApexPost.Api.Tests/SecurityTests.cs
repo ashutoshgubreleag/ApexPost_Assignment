@@ -5,6 +5,7 @@ using ApexPost.Api.Security;
 using ApexPost.Api.Tests.Support;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.JsonWebTokens;
 
 namespace ApexPost.Api.Tests;
 
@@ -42,7 +43,7 @@ public sealed class SecurityTests : IClassFixture<ApiFactory>
                 scanId = Guid.NewGuid(),
                 scanType = "PickedUp",
                 location = "Melbourne Depot",
-                scannedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+                scannedAtUtc = TestTimes.PastReference.AddHours(-1),
                 courierId,
             },
         },
@@ -102,8 +103,8 @@ public sealed class SecurityTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task ExpiredToken_Returns401()
     {
-        var now = DateTime.UtcNow;
-        var expired = AuthTestExtensions.CreateCustomToken(ApiRoles.Courier, now.AddHours(-2), now.AddHours(-1));
+        // Fixed instants decades in the past: expired whatever the server clock says.
+        var expired = AuthTestExtensions.CreateCustomToken(ApiRoles.Courier, TestTimes.FarPast.UtcDateTime, TestTimes.FarPast.AddHours(1).UtcDateTime);
         using var client = Anonymous().WithToken(expired);
 
         await AssertProblemAsync(await client.GetAsync("/api/v2/shipments"), HttpStatusCode.Unauthorized);
@@ -112,8 +113,8 @@ public sealed class SecurityTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task TokenSignedWithAnotherKey_Returns401()
     {
-        var now = DateTime.UtcNow;
-        var forged = AuthTestExtensions.CreateCustomToken(ApiRoles.Admin, now, now.AddHours(1), signingKey: "another-key-that-is-long-enough-0123456789");
+        // Lifetime valid on any run (far past to far future), so only the wrong key can cause the 401.
+        var forged = AuthTestExtensions.CreateCustomToken(ApiRoles.Admin, TestTimes.FarPast.UtcDateTime, TestTimes.FarFuture.UtcDateTime, signingKey: "another-key-that-is-long-enough-0123456789");
         using var client = Anonymous().WithToken(forged);
 
         await AssertProblemAsync(await client.GetAsync("/api/v2/shipments"), HttpStatusCode.Unauthorized);
@@ -122,8 +123,8 @@ public sealed class SecurityTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task TokenForAnotherAudience_Returns401()
     {
-        var now = DateTime.UtcNow;
-        var wrongAudience = AuthTestExtensions.CreateCustomToken(ApiRoles.Courier, now, now.AddHours(1), audience: "some-other-api");
+        // Lifetime valid on any run, so only the wrong audience can cause the 401.
+        var wrongAudience = AuthTestExtensions.CreateCustomToken(ApiRoles.Courier, TestTimes.FarPast.UtcDateTime, TestTimes.FarFuture.UtcDateTime, audience: "some-other-api");
         using var client = Anonymous().WithToken(wrongAudience);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v2/shipments")).StatusCode);
@@ -314,7 +315,10 @@ public sealed class SecurityTests : IClassFixture<ApiFactory>
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var token = body.RootElement.GetProperty("accessToken").GetString();
         Assert.False(string.IsNullOrEmpty(token));
-        Assert.True(body.RootElement.GetProperty("expiresAtUtc").GetDateTimeOffset() > DateTimeOffset.UtcNow);
+        // Compare the advertised expiry with the token itself instead of with the wall clock.
+        var jwt = new JsonWebToken(token);
+        Assert.Equal(jwt.ValidTo, body.RootElement.GetProperty("expiresAtUtc").GetDateTimeOffset().UtcDateTime, TimeSpan.FromSeconds(1));
+        Assert.True(jwt.ValidTo > jwt.IssuedAt, "The token must expire after it was issued.");
         client.WithToken(token!);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v2/shipments")).StatusCode);
     }

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using ApexPost.Api.Contracts;
+using ApexPost.Api.Tests.Support;
 using ApexPost.Models.Domain;
 
 namespace ApexPost.Api.Tests;
@@ -7,10 +8,15 @@ namespace ApexPost.Api.Tests;
 /// <summary>The DataAnnotations and IValidatableObject rules that [ApiController] turns into 400 ValidationProblemDetails.</summary>
 public sealed class RequestValidationTests
 {
+    // The "server clock" seen by the validators. ScanItemRequest reads TimeProvider from the ValidationContext, so the
+    // future-scan and clock-drift rules are tested against a fixed instant instead of the wall clock.
+    private static readonly TestClock ServerClock = new(TestTimes.PastReference);
+
     private static List<ValidationResult> Validate(object instance)
     {
         var results = new List<ValidationResult>();
-        Validator.TryValidateObject(instance, new ValidationContext(instance), results, validateAllProperties: true);
+        var context = new ValidationContext(instance, new ClockServiceProvider(ServerClock), items: null);
+        Validator.TryValidateObject(instance, context, results, validateAllProperties: true);
         return results;
     }
 
@@ -32,7 +38,7 @@ public sealed class RequestValidationTests
         ScanId = Guid.NewGuid(),
         ScanType = ScanType.PickedUp,
         Location = "Melbourne Depot",
-        ScannedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+        ScannedAtUtc = ServerClock.GetUtcNow().AddHours(-1),
     };
 
     [Fact]
@@ -145,7 +151,7 @@ public sealed class RequestValidationTests
     public void Scan_InTheFuture_IsInvalid()
     {
         var scan = ValidScan();
-        scan.ScannedAtUtc = DateTimeOffset.UtcNow.AddDays(1);
+        scan.ScannedAtUtc = ServerClock.GetUtcNow().AddDays(1);
 
         var results = Validate(scan);
 
@@ -157,7 +163,7 @@ public sealed class RequestValidationTests
     public void Scan_SecondsAheadOfTheServerClock_IsToleratedAsClockDrift()
     {
         var scan = ValidScan();
-        scan.ScannedAtUtc = DateTimeOffset.UtcNow.AddSeconds(20);
+        scan.ScannedAtUtc = ServerClock.GetUtcNow().AddSeconds(20);
 
         Assert.Empty(Validate(scan));
     }
@@ -227,4 +233,10 @@ public sealed class RequestValidationTests
         Assert.Empty(Validate(new ScanUploadRequest { Scans = [ValidScan()] }));
         Assert.Empty(Validate(new ScanUploadRequest { Scans = Enumerable.Range(0, 100).Select(_ => ValidScan()).ToList() }));
     }
+}
+
+/// <summary>Minimal service provider that hands the validators a fixed <see cref="TimeProvider"/>.</summary>
+internal sealed class ClockServiceProvider(TimeProvider clock) : IServiceProvider
+{
+    public object? GetService(Type serviceType) => serviceType == typeof(TimeProvider) ? clock : null;
 }

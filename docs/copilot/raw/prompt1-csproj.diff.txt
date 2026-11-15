@@ -1,0 +1,12 @@
+diff --git a/ApexPost.Courier.Core.Tests/ApexPost.Courier.Core.Tests.csproj b/ApexPost.Courier.Core.Tests/ApexPost.Courier.Core.Tests.csproj
+index a996ec1..13e2354 100644
+--- a/ApexPost.Courier.Core.Tests/ApexPost.Courier.Core.Tests.csproj
++++ b/ApexPost.Courier.Core.Tests/ApexPost.Courier.Core.Tests.csproj
+@@ -11,6 +11,7 @@
+       <PrivateAssets>all</PrivateAssets>
+       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+     </PackageReference>
++    <PackageReference Include="Moq" Version="4.20.72" />
+   </ItemGroup>
+ 
+   <ItemGroup>

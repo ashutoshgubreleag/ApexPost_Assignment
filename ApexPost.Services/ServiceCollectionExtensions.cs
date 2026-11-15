@@ -66,6 +66,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IOfflineSaleService, OfflineSaleService>();
         services.AddScoped<IShipmentTrackingService, ShipmentTrackingService>();
+        // Heavy-parcel surcharge (Week 5 TDD rule): bands and start date from configuration, checked at start-up.
+        services.AddOptions<HeavyParcelSurchargeOptions>()
+            .Bind(configuration.GetSection(HeavyParcelSurchargeOptions.SectionName))
+            .Validate(o => o.IsValid(), "HeavyParcelSurcharge: every tier must start between the minimum and maximum weight, charge a positive amount, and start at a distinct weight.")
+            .ValidateOnStart();
+        services.AddSingleton<IShipmentSurchargePolicy, HeavyParcelSurchargePolicy>();
 
         // Reads the shipment through the request's query service, so it is scoped like the DbContext.
         services.AddScoped<ICourierTrackingService, SimulatedCourierTrackingService>();

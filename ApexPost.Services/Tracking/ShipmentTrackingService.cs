@@ -17,9 +17,11 @@ public sealed partial class ShipmentTrackingService(
     TimeProvider clock,
     IShipmentSurchargePolicy surcharges) : IShipmentTrackingService
 {
-    /// <summary>RED: signature only (Week 5 TDD, see TDD-LOG.md).</summary>
-    public Task<ShipmentChargesDto> GetChargesAsync(string trackingNumber, CancellationToken cancellationToken) =>
-        throw new NotImplementedException(surcharges.GetType().Name);
+    public async Task<ShipmentChargesDto> GetChargesAsync(string trackingNumber, CancellationToken cancellationToken)
+    {
+        var shipment = await GetAsync(trackingNumber, cancellationToken).ConfigureAwait(false);
+        return new ShipmentChargesDto(shipment.TrackingNumber, shipment.WeightKg, surcharges.SurchargeFor(shipment.WeightKg, shipment.CreatedAt));
+    }
 
     public Task<PagedResult<TrackedShipmentDto>> ListAsync(TrackingListQuery query, CancellationToken cancellationToken)
     {

@@ -24,16 +24,44 @@ public sealed class HeavyParcelSurchargeOptions
 /// <summary>What a shipment is charged on top of the base price.</summary>
 public sealed record ShipmentChargesDto(string TrackingNumber, decimal WeightKg, decimal HeavyParcelSurcharge);
 
-/// <summary>RED: signature only, so the tests compile and fail. Implemented test-first (see TDD-LOG.md).</summary>
+/// <summary>GREEN: the simplest code that passes the tests (see TDD-LOG.md).</summary>
 public sealed class HeavyParcelSurchargePolicy : IShipmentSurchargePolicy
 {
+    private readonly HeavyParcelSurchargeOptions _options;
+    private readonly TimeProvider _clock;
+
     public HeavyParcelSurchargePolicy(IOptions<HeavyParcelSurchargeOptions> options, TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(clock);
+        _options = options.Value;
+        _clock = clock;
     }
 
-    public decimal SurchargeFor(decimal weightKg, DateTimeOffset bookedAtUtc) => throw new NotImplementedException();
+    public decimal SurchargeFor(decimal weightKg, DateTimeOffset bookedAtUtc)
+    {
+        if (weightKg < 0.1m || weightKg > 70m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(weightKg), weightKg, "Weight must be between 0.1 and 70 kg.");
+        }
 
-    public decimal QuoteNow(decimal weightKg) => throw new NotImplementedException();
+        if (bookedAtUtc < _options.EffectiveFromUtc)
+        {
+            return 0m;
+        }
+
+        if (weightKg > 50m)
+        {
+            return 25.00m;
+        }
+
+        if (weightKg > 30m)
+        {
+            return 15.00m;
+        }
+
+        return 0m;
+    }
+
+    public decimal QuoteNow(decimal weightKg) => SurchargeFor(weightKg, _clock.GetUtcNow());
 }

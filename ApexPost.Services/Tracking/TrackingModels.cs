@@ -18,6 +18,26 @@ public static class TrackingLimits
     public const int MaxScansPerUpload = 100;
     public const string TrackingNumberPattern = @"^APX-\d{8}$";
     public const string PhonePattern = @"^\+?[0-9][0-9 ()\-]{6,18}[0-9]$";
+
+    /// <summary>Lightest shipment the service accepts (also enforced by the domain and a database check constraint).</summary>
+    public const decimal MinWeightKg = 0.1m;
+
+    /// <summary>Heaviest shipment the service accepts (also enforced by the domain and a database check constraint).</summary>
+    public const decimal MaxWeightKg = 70m;
+
+    public static readonly string WeightRangeMessage =
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Weight must be between {MinWeightKg} and {MaxWeightKg:0} kg.");
+
+    public static bool IsWeightInRange(decimal weightKg) => weightKg is >= MinWeightKg and <= MaxWeightKg;
+
+    /// <exception cref="ArgumentOutOfRangeException">The weight is outside <see cref="MinWeightKg"/>–<see cref="MaxWeightKg"/>.</exception>
+    public static void EnsureWeightInRange(decimal weightKg, string paramName)
+    {
+        if (!IsWeightInRange(weightKg))
+        {
+            throw new ArgumentOutOfRangeException(paramName, weightKg, WeightRangeMessage);
+        }
+    }
 }
 
 public sealed record ShipmentDetails(string RecipientName, string RecipientPhone, string AddressLine, string City, decimal WeightKg);

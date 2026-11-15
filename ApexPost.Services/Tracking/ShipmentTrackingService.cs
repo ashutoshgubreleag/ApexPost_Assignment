@@ -275,9 +275,9 @@ public sealed partial class ShipmentTrackingService(
             errors.Add(new ValidationError(nameof(details.City), "City is required."));
         }
 
-        if (details.WeightKg is < 0.1m or > 70m)
+        if (!TrackingLimits.IsWeightInRange(details.WeightKg))
         {
-            errors.Add(new ValidationError(nameof(details.WeightKg), "Weight must be between 0.1 and 70 kg."));
+            errors.Add(new ValidationError(nameof(details.WeightKg), TrackingLimits.WeightRangeMessage));
         }
 
         return errors;

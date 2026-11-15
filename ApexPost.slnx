@@ -31,6 +31,7 @@
   <Project Path="ApexPost.Client/ApexPost.Client.csproj" />
   <Project Path="ApexPost.Client.Consumer/ApexPost.Client.Consumer.csproj" />
   <Project Path="ApexPost.CounterTerminal/ApexPost.CounterTerminal.csproj" />
+  <Project Path="ApexPost.Specs/ApexPost.Specs.csproj" />
   <Project Path="ApexPost.Tests/ApexPost.Tests.csproj" />
   <Project Path="ApexPost.Api.Tests/ApexPost.Api.Tests.csproj" />
   <Project Path="ApexPost.CounterTerminal.Tests/ApexPost.CounterTerminal.Tests.csproj" />

@@ -353,7 +353,16 @@ them. Each feature has a `Background`, and at least one `Scenario Outline` with 
 other, and parallel execution stays safe.
 
 **Migration note:** there was no SpecFlow work in earlier weeks, so nothing needs migrating. Reqnroll is used
-from the start.
+from the start (`Reqnroll.xUnit`, same xUnit 2.9.3 runner as every other project).
+
+**As built (Step 6):** 2 features, 16 scenarios. Each feature has a `Background`. There are 3 `Scenario Outline`s
+(weight limits, heavy-parcel surcharge bands, unreachable server) with `Examples`. State is shared through the
+injected `ShipmentWorld`, and `Hooks` (`[BeforeScenario]` / `[AfterScenario]`) build and clear it. The phone-to-server
+link is an `InProcessUploader` that follows the same rules as the production `ApiShipmentUploader`: one request per
+tracking number, the production `ScanTypeMapper`, and the signature taken from Notes. *Why not the real
+uploader:* it needs HTTP, and HTTP mapping is already covered by the `ApexApiClient` and uploader tests. The
+stateful `InMemoryTrackingStore` is **linked** from `ApexPost.Api.Tests` (not copied), so there is one fake to
+maintain.
 
 ---
 

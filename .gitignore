@@ -35,3 +35,6 @@ artifacts/
 /update-week3*.ps1
 
 courier-data/
+
+# Reqnroll generates these from the .feature files at build time
+*.feature.cs

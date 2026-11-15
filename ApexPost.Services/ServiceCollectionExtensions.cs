@@ -66,6 +66,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IOfflineSaleService, OfflineSaleService>();
         services.AddScoped<IShipmentTrackingService, ShipmentTrackingService>();
+        services.Configure<HeavyParcelSurchargeOptions>(configuration.GetSection(HeavyParcelSurchargeOptions.SectionName));
+        services.AddSingleton<IShipmentSurchargePolicy, HeavyParcelSurchargePolicy>();
 
         // Reads the shipment through the request's query service, so it is scoped like the DbContext.
         services.AddScoped<ICourierTrackingService, SimulatedCourierTrackingService>();

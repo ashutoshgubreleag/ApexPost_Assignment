@@ -20,7 +20,7 @@ public sealed class ShipmentValidationTests
     private readonly ShipmentTrackingService _service;
 
     public ShipmentValidationTests() =>
-        _service = new ShipmentTrackingService(_repository.Object, _queries.Object, _unitOfWork.Object, new FakeTimeProvider(TrackingTestData.Now));
+        _service = new ShipmentTrackingService(_repository.Object, _queries.Object, _unitOfWork.Object, new FakeTimeProvider(TrackingTestData.Now), Mock.Of<IShipmentSurchargePolicy>());
 
     private void AllowSuccessfulCreate()
     {

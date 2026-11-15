@@ -50,4 +50,8 @@ public interface IShipmentTrackingService
     Task<ScanUploadResult> UploadScansAsync(string trackingNumber, IReadOnlyList<ScanInput> scans, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ScanDto>> GetScansAsync(string trackingNumber, CancellationToken cancellationToken);
+
+    /// <summary>The heavy-parcel surcharge of an existing shipment, based on its weight and booking time.</summary>
+    /// <exception cref="Models.Exceptions.EntityNotFoundException">Unknown tracking number.</exception>
+    Task<ShipmentChargesDto> GetChargesAsync(string trackingNumber, CancellationToken cancellationToken);
 }

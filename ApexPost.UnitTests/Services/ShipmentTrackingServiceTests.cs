@@ -24,7 +24,7 @@ public sealed class ShipmentTrackingServiceTests
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly FakeTimeProvider _clock = new(TrackingTestData.Now);
 
-    private ShipmentTrackingService CreateService() => new(_repository.Object, _queries.Object, _unitOfWork.Object, _clock);
+    private ShipmentTrackingService CreateService() => new(_repository.Object, _queries.Object, _unitOfWork.Object, _clock, Mock.Of<IShipmentSurchargePolicy>());
 
     // ---------------------------------------------------------------- create
 
@@ -56,7 +56,7 @@ public sealed class ShipmentTrackingServiceTests
         // Arrange: Strict mocks throw on ANY call, so the test fails if validation lets the command through.
         var repository = new Mock<ITrackedShipmentRepository>(MockBehavior.Strict);
         var unitOfWork = new Mock<IUnitOfWork>(MockBehavior.Strict);
-        var service = new ShipmentTrackingService(repository.Object, _queries.Object, unitOfWork.Object, _clock);
+        var service = new ShipmentTrackingService(repository.Object, _queries.Object, unitOfWork.Object, _clock, Mock.Of<IShipmentSurchargePolicy>());
 
         // Act
         await Assert.ThrowsAsync<CommandValidationException>(

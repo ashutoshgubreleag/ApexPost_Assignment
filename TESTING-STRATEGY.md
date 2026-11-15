@@ -78,6 +78,24 @@ de-duplication, error mapping), which unit tests check fastest and most precisel
 deliberately thin but **real** (real SQL Server, real HTTP pipeline), so it catches what mocks cannot. We have
 no UI tests (out of scope), so there is no ice-cream-cone top.
 
+### Actual pyramid after Week 5 (final run: 660 tests, all passing)
+
+| Level | Test cases | Share | Run time | Where |
+|---|---:|---:|---:|---|
+| **Unit** | 368 | 55.8 % | about 8 s | `ApexPost.UnitTests` (181); unit classes in `ApexPost.Api.Tests` (90: service rules, request validation, exception mapping) and `ApexPost.Tests` (95); `DomainPurityTests` (2) |
+| **Integration** | 264 | 40.0 % | about 75 s | `ApexPost.IntegrationTests` (65, SQL Server); API pipeline classes in `ApexPost.Api.Tests` (67) and `ApexPost.Tests` (48); Couchbase Lite (60); Polly pipeline (24) |
+| **BDD** | 28 | 4.2 % | about 0.3 s | `ApexPost.Specs` (3 features, 28 scenarios) |
+
+(`TransactionRuleTests` is compiled into both `ApexPost.Tests` and `ApexPost.IntegrationTests` on purpose, so its
+cases are counted once at each level.)
+
+**Against the target (65–70 / 25 / 5–8 %):** the unit share is lower than planned. That is not because unit tests
+are missing for the Week 5 scope (`ApexPost.UnitTests` alone has 181). It is because Weeks 2–4 already built 115
+`WebApplicationFactory` tests, which count as integration. They are kept on purpose (§4): they run in about 10 s
+in total because they use an in-memory store, so they behave like unit tests in cost while proving the real HTTP
+pipeline. Measured by **time**, the pyramid is clearly the right shape: everything except SQL Server and Couchbase
+runs in under 15 seconds, and the slow, expensive level (SQL Server) is 65 targeted tests.
+
 ---
 
 ## 3. Framework choice: **xUnit** (one framework for the whole solution)
@@ -355,7 +373,9 @@ other, and parallel execution stays safe.
 **Migration note:** there was no SpecFlow work in earlier weeks, so nothing needs migrating. Reqnroll is used
 from the start (`Reqnroll.xUnit`, same xUnit 2.9.3 runner as every other project).
 
-**As built (Step 6):** 2 features, 16 scenarios. Each feature has a `Background`. There are 3 `Scenario Outline`s
+**As built:** Step 6 added 2 features with 16 scenarios. Step 7 added a third, Copilot-assisted, reviewed
+`ShipmentStatus.feature` (12 scenarios, see COPILOT-LOG.md), bringing the total to 3 features and 28 scenarios.
+In Step 6: Each feature has a `Background`. There are 3 `Scenario Outline`s
 (weight limits, heavy-parcel surcharge bands, unreachable server) with `Examples`. State is shared through the
 injected `ShipmentWorld`, and `Hooks` (`[BeforeScenario]` / `[AfterScenario]`) build and clear it. The phone-to-server
 link is an `InProcessUploader` that follows the same rules as the production `ApiShipmentUploader`: one request per
@@ -413,8 +433,64 @@ the run summary, are in the README "Tests" section.
 
 ## 14. Results & reflection
 
-*To be completed in Task 7 after the full suite has run: passed / failed / skipped summary, optional coverage
-comment, what the strategy caught, what we would change, and which test type gave the most confidence per minute.*
+### Results
+
+Final run (`dotnet test ApexPost.slnx`, .NET 10.0.402, LocalDB): **660 passed, 0 failed, 0 skipped** across 8
+test projects, in about 1.5 minutes including the build. Per project: README "Latest full run". Saved logs:
+`docs/test-run/test-run-summary.txt` and `docs/test-run/test-run-detailed.txt`. The suite grew from 432 to 660; no
+existing test was deleted (§4).
+
+**Code coverage: deliberately not produced.** It was optional, and the strategy treats coverage as evidence, not a
+target. A trial run with coverlet was made and then removed, and it taught one useful thing: in that run the
+collector could not instrument `ApexPost.Services` inside two of the test projects, so the heavy-parcel surcharge
+policy showed **47 %** even though 20 TDD tests run every branch of it. A coverage number is only as good as its
+instrumentation. The strongest evidence that our tests can fail is the break-the-code proofs (COPILOT-LOG.md) and
+the RED commit (TDD-LOG.md), not a percentage.
+
+### Reflection
+
+**What the strategy caught.** Most of the value came from *testing the tests*:
+1. A **boundary test that could not fail**: EF Core sent `70.001` as `decimal(18,2)`, so SQL Server received a valid
+   `70.00` (finding 1 below). It was caught only because the test was first run *expecting* red.
+2. Two **Copilot defects that passed on the first run**: a tautological assertion, and a step helper that would
+   throw `Delivered → Failed` on an untested path (proven by a probe run). Plus weak assertions, call-count-coupled
+   mocks and dead code (COPILOT-LOG.md).
+3. **Non-deterministic tests in the existing suite**: about 20 wall-clock reads, a Stopwatch "faster than" assertion,
+   and fixed sleeps. All were fixed before new tests were written, so the new suite started from a stable base.
+4. **Duplicated rules** (0.1 / 70 kg written in three places), found while refactoring the TDD rule and
+   consolidated into `TrackingLimits`.
+
+No production bug in the existing tracking rules was found. That is itself a result: the Week 4 rules held up
+against a full 36-pair status matrix, races on both unique indexes, and an end-to-end run on SQL Server.
+
+**What I would change.** (1) Write the data-access and determinism rules (§5, §7) *before* Week 3, not in Week 5:
+fixing the clock afterwards cost more than injecting `TimeProvider` from the start. (2) Give every test project one
+level only. The mixed projects (`ApexPost.Tests`, `ApexPost.Api.Tests`) are the reason the measured pyramid looks
+flatter than it is. (3) Move the API JWT validation to `TimeProvider`, so security tests could use a frozen clock
+instead of far-past/far-future instants. (4) Run `ApexPost.IntegrationTests` against a SQL Server container in CI,
+so the "no manual setup" promise also holds on machines without LocalDB.
+
+**Most confidence per minute.** The **SQL Server integration tests** gave the most confidence per minute *spent
+writing them*. In about an hour they proved what no mock can: the unique indexes, the race between two creates,
+the cascade, the check constraints and the real query translation, and they exposed the decimal-precision trap.
+The **parameterized unit theories** gave the most confidence per second *of run time*: the 79-case status matrix and
+the boundary theories run in milliseconds and pin down every rule edge. **BDD** gave the least new coverage per
+minute (it repeats rules tested lower down), but the most *shared understanding*: its value is that a dispatcher can
+read and sign off ScanSync.feature.
+
+### Viva notes (5 minutes)
+
+* **Pyramid:** 368 unit / 264 integration / 28 BDD. The unit level gives fast rules; the integration level gives
+  real SQL, HTTP and Couchbase seams; BDD gives business acceptance. Why the unit share is about 56 %: see §2.
+* **Framework:** xUnit everywhere. All 432 existing tests used it, it gives per-test isolation by design,
+  `TheoryData` drives the matrix, and `Reqnroll.xUnit` supports it.
+* **One mock and what it does not prove:** in `ShipmentTrackingServiceTests`, the unit of work mock *throws*
+  `DuplicateKeyException`, and we verify that the service calls `DiscardChanges` once and answers 409. It does **not**
+  prove that SQL Server really throws on a duplicate, or that the exception mapping exists.
+  `TrackingPersistenceTests` proves that.
+* **One rejected Copilot test:** `SyncCoordinator_ChangedEvent_UpdatesSnapshotValues`. Its name promised the
+  event sequence, but it asserted `NotEmpty` and then re-checked final state already covered by another test.
+  Replaced by an exact "syncing → idle" sequence test.
 
 **Findings log (collected while implementing, used in the reflection):**
 
